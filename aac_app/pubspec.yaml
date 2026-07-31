@@ -1,0 +1,46 @@
+name: context_aware_aac
+description: >
+  A context-aware AAC (Augmentative and Alternative Communication) app for
+  users who cannot hear or speak but can read and understand. Supports
+  English, Modern Standard Arabic, and Egyptian Arabic. Uses a fast,
+  offline-first rule engine for common conversation patterns, and falls
+  back to an LLM (Claude) only for novel, open-ended sentences.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Local, structured storage for user profile + phrasebook + scores
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Text to speech (English + Arabic voices depend on device OS voices)
+  flutter_tts: ^4.0.2
+
+  # Speech to text (streaming mic capture)
+  speech_to_text: ^7.0.0
+
+  # Networking, used only for the LLM fallback path
+  http: ^1.2.2
+
+  # Small utility for unique ids / timeststaps
+  uuid: ^4.4.0
+
+  # For phone-call style audio session handling (VoIP groundwork)
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.9
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
