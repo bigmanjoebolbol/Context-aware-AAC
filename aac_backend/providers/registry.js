@@ -1,11 +1,12 @@
 import * as groq from './groq.js';
 import * as gemini from './gemini.js';
 import * as claude from './claude.js';
+import * as ollama from './ollama.js';
 
-// To add another provider (e.g. xAI's Grok, OpenAI): write a module with
-// the same shape (id, label, envKey, defaultModel, generate()) and add it
-// here. Nothing else in the app needs to change.
-const ALL_PROVIDERS = [groq, gemini, claude];
+// To add another provider: write a module with the same shape
+// (id, label, envKey, defaultModel, generate()) and add it here.
+// Ollama uses OLLAMA_MODEL as its sentinel — set it in .env to enable local LLM.
+const ALL_PROVIDERS = [groq, gemini, claude, ollama];
 
 function modelEnvVar(providerId) {
   return `${providerId.toUpperCase()}_MODEL`;

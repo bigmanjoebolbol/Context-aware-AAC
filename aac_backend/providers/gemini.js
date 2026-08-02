@@ -3,7 +3,7 @@ import { fetchWithTimeout } from '../utils.js';
 export const id = 'gemini';
 export const label = 'Gemini';
 export const envKey = 'GEMINI_API_KEY';
-export const defaultModel = 'gemini-3.5-flash-lite';
+export const defaultModel = 'gemini-2.5-flash-lite';
 
 export async function generate({ apiKey, model, systemInstruction, userPrompt, maxTokens, timeoutMs }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

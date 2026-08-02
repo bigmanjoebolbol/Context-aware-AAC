@@ -4,7 +4,6 @@ import 'package:uuid/uuid.dart';
 import '../models/user_profile.dart';
 import '../models/contact_entry.dart';
 import '../services/storage_service.dart';
-import '../services/app_strings.dart';
 
 class ContactsManagementScreen extends StatefulWidget {
   final StorageService storage;
@@ -66,7 +65,6 @@ class _ContactsManagementScreenState extends State<ContactsManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = _profile.uiLanguage;
 
     return Scaffold(
       appBar: AppBar(

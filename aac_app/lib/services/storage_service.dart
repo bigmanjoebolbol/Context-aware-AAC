@@ -2,22 +2,22 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/user_profile.dart';
 import '../models/conversation_entry.dart';
+import '../models/conversation_session.dart';
 import '../models/phrase_entry.dart';
 import '../models/hive_adapters.dart';
 import 'phrasebook_seed.dart';
 
-/// Single access point for all local, on-device storage. Everything here
-/// is offline - no network call is ever made from this class. This is
-/// deliberate: the user's profile and phrasebook must always be readable
-/// and writable even with zero connectivity.
+/// Single access point for all local, on-device storage.
 class StorageService extends ChangeNotifier {
   static const _profileBoxName = 'profile_box';
   static const _phrasebookBoxName = 'phrasebook_box';
   static const _historyBoxName = 'history_box';
+  static const _sessionBoxName = 'session_box';
 
   late Box<UserProfile> _profileBox;
   late Box<PhraseEntry> _phrasebookBox;
   late Box<ConversationEntry> _historyBox;
+  late Box<ConversationSession> _sessionBox;
 
   Future<void> init() async {
     await Hive.initFlutter();
@@ -25,6 +25,7 @@ class StorageService extends ChangeNotifier {
     _profileBox = await Hive.openBox<UserProfile>(_profileBoxName);
     _phrasebookBox = await Hive.openBox<PhraseEntry>(_phrasebookBoxName);
     _historyBox = await Hive.openBox<ConversationEntry>(_historyBoxName);
+    _sessionBox = await Hive.openBox<ConversationSession>(_sessionBoxName);
 
     if (_phrasebookBox.isEmpty) {
       for (final entry in defaultPhrasebook()) {
@@ -57,20 +58,11 @@ class StorageService extends ChangeNotifier {
     await _phrasebookBox.add(entry);
   }
 
-  /// Bumps the score for [chosenReply] under the matched [entry], so that
-  /// next time this same question type comes up, the user's actual habits
-  /// are reflected in the ranking. This is the entirety of the
-  /// "personalization learning" - simple frequency reinforcement, fully
-  /// on-device and fully explainable.
   Future<void> reinforcePhraseChoice(PhraseEntry entry, String chosenReply) async {
     entry.replyScores[chosenReply] = (entry.replyScores[chosenReply] ?? 0) + 1;
     await entry.save();
   }
 
-  /// Called when the user picks a reply that isn't in the phrasebook yet
-  /// (e.g. from an LLM suggestion, or their own custom text) for a
-  /// recurring-looking question. Creates a new learned phrase entry so
-  /// the fast path can catch this question next time.
   Future<void> learnNewPhrase({
     required String triggerKey,
     required List<String> variants,
@@ -91,15 +83,77 @@ class StorageService extends ChangeNotifier {
     await addPhraseEntry(entry);
   }
 
+  // ---------- Conversation Sessions ----------
+
+  /// Returns all saved sessions sorted newest first.
+  List<ConversationSession> getSessions() {
+    return _sessionBox.values.toList()
+      ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+  }
+
+  Future<ConversationSession> createSession(ConversationSession session) async {
+    await _sessionBox.put(session.id, session);
+    notifyListeners();
+    return session;
+  }
+
+  Future<void> updateSession(ConversationSession session) async {
+    await _sessionBox.put(session.id, session);
+    notifyListeners();
+  }
+
+  /// Deletes a session AND all its associated conversation entries.
+  Future<void> deleteSession(String sessionId) async {
+    // Remove all entries belonging to this session
+    final toDelete = _historyBox.values
+        .where((e) => e.sessionId == sessionId)
+        .toList();
+    for (final entry in toDelete) {
+      await entry.delete();
+    }
+    await _sessionBox.delete(sessionId);
+    notifyListeners();
+  }
+
+  ConversationSession? getSession(String sessionId) {
+    return _sessionBox.get(sessionId);
+  }
+
   // ---------- Conversation history ----------
 
   Future<void> logEntry(ConversationEntry entry) async {
     await _historyBox.add(entry);
+    // Update the session's lastMessageAt timestamp
+    if (entry.sessionId != null) {
+      final session = _sessionBox.get(entry.sessionId!);
+      if (session != null) {
+        session.lastMessageAt = entry.timestamp;
+        await session.save();
+        notifyListeners();
+      }
+    }
   }
 
-  List<ConversationEntry> recentHistory({int limit = 20}) {
-    final all = _historyBox.values.toList()
+  /// Returns recent history. If [sessionId] is provided, filters to that session only.
+  List<ConversationEntry> recentHistory({int limit = 20, String? sessionId}) {
+    final all = _historyBox.values
+        .where((e) => sessionId == null || e.sessionId == sessionId)
+        .toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return all.take(limit).toList();
   }
+
+  /// Deletes all conversation entries for a session (used for "clear chat").
+  Future<void> clearSessionHistory(String sessionId) async {
+    final toDelete = _historyBox.values
+        .where((e) => e.sessionId == sessionId)
+        .toList();
+    for (final entry in toDelete) {
+      await entry.delete();
+    }
+    notifyListeners();
+  }
 }
+
+
+

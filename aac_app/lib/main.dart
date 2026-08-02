@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/storage_service.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/conversation_screen.dart';
+import 'screens/sessions_screen.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -22,7 +22,7 @@ class ContextAwareAacApp extends StatelessWidget {
       builder: (context, child) {
         final profile = storage.getProfile();
         final startScreen = (profile != null && profile.onboardingComplete)
-            ? ConversationScreen(storage: storage)
+            ? SessionsScreen(storage: storage)
             : OnboardingScreen(storage: storage);
 
         final theme = switch (profile?.themeMode) {
@@ -41,3 +41,4 @@ class ContextAwareAacApp extends StatelessWidget {
     );
   }
 }
+

@@ -47,14 +47,14 @@ class SttService {
         onResult(result.recognizedWords, result.finalResult);
       },
       onSoundLevelChange: onSoundLevelChange,
-      listenFor: const Duration(minutes: 5),
-      pauseFor: const Duration(seconds: 30),
-      listenMode: stt.ListenMode.dictation,
       listenOptions: stt.SpeechListenOptions(
         partialResults: true,
         cancelOnError: true,
         localeId: localeId,
-        onDevice: true,
+        onDevice: false, // Set to false to allow robust cloud fallback
+        listenFor: const Duration(minutes: 5),
+        pauseFor: const Duration(seconds: 30),
+        listenMode: stt.ListenMode.dictation,
       ),
     );
   }

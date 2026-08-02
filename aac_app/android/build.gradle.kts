@@ -16,9 +16,9 @@ subprojects {
         val extension = extensions.findByName("android")
         if (extension != null) {
             if (extension is com.android.build.gradle.BaseExtension) {
-                extension.compileSdkVersion(36)
+                extension.compileSdkVersion(35)
                 extension.defaultConfig {
-                    targetSdk = 36
+                    targetSdk = 35
                 }
             }
         }

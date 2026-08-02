@@ -20,18 +20,7 @@ class RuleEngineResult {
 }
 
 class RuleEngine {
-  // Egyptian Arabic + MSA "or" connectors, and English "or".
-  static final RegExp _eitherOrPattern = RegExp(
-    r'(.+?)\s+(?:or|ولا|او|أو)\s+(.+?)\??$',
-    caseSensitive: false,
-  );
 
-  // Starters that strongly indicate a yes/no question.
-  static const List<String> _yesNoStarters = [
-    'do you', 'does he', 'does she', 'did you', 'can you', 'could you',
-    'would you', 'will you', 'is it', 'are you', 'have you',
-    'هل', 'عايز', 'عاوز', 'تحب', 'حابب', 'ممكن',
-  ];
 
   String _normalize(String s) => s.trim().toLowerCase();
 
@@ -45,30 +34,25 @@ class RuleEngine {
   }) {
     final normalized = _normalize(text);
 
-    // 1. Either/or takes priority - it's the most specific pattern and
-    //    the most valuable to catch fast (e.g. "chicken or meat?").
-    final eitherOrMatch = _eitherOrPattern.firstMatch(normalized);
-    if (eitherOrMatch != null) {
-      final optionA = eitherOrMatch.group(1)?.trim() ?? '';
-      final optionB = eitherOrMatch.group(2)?.trim() ?? '';
-      if (optionA.isNotEmpty && optionB.isNotEmpty && optionA.split(' ').length <= 4) {
-        final suggestions = <Suggestion>[
-          Suggestion(text: _capitalize(optionA), source: SuggestionSource.eitherOr),
-          Suggestion(text: _capitalize(optionB), source: SuggestionSource.eitherOr),
-        ];
-        final preferredThird = _thirdOptionFromPreference(optionA, optionB, profile);
-        if (preferredThird != null) {
-          suggestions.add(Suggestion(
-            text: preferredThird,
-            source: SuggestionSource.userPreferenceFill,
-          ));
-        }
-        return RuleEngineResult(
-          handled: true,
-          type: QuestionType.eitherOr,
-          suggestions: suggestions,
-        );
+    // 1. Either/or & multi-choice processing takes priority.
+    final options = _extractOptions(normalized);
+    if (options.isNotEmpty && options.length >= 2) {
+      final suggestions = options
+          .map((opt) => Suggestion(text: _capitalize(opt), source: SuggestionSource.eitherOr))
+          .toList();
+
+      final preferredThird = _thirdOptionFromPreference(options, profile);
+      if (preferredThird != null) {
+        suggestions.add(Suggestion(
+          text: preferredThird,
+          source: SuggestionSource.userPreferenceFill,
+        ));
       }
+      return RuleEngineResult(
+        handled: true,
+        type: QuestionType.eitherOr,
+        suggestions: suggestions,
+      );
     }
 
     // 2. Known phrasebook entries - checked before generic yes/no because
@@ -83,25 +67,7 @@ class RuleEngine {
       );
     }
 
-    // 3. Generic yes/no.
-    final whStarters = ['how', 'what', 'why', 'who', 'where', 'when', 'إزاي', 'فين', 'ليه', 'مين', 'متى'];
-    final isWhQuestion = whStarters.any((s) => normalized.startsWith(s));
 
-    final looksYesNo = !isWhQuestion &&
-        (_yesNoStarters.any((s) => normalized.startsWith(s)) ||
-            (normalized.endsWith('?') && normalized.split(' ').length <= 6));
-
-    if (looksYesNo) {
-      return RuleEngineResult(
-        handled: true,
-        type: QuestionType.yesNo,
-        suggestions: [
-          Suggestion(text: 'Yes / أيوة', source: SuggestionSource.yesNo, score: 2),
-          Suggestion(text: 'No / لأ', source: SuggestionSource.yesNo, score: 2),
-          Suggestion(text: 'Maybe / يمكن', source: SuggestionSource.yesNo, score: 1),
-        ],
-      );
-    }
 
     // 4. Nothing matched - hand off to the LLM fallback.
     return RuleEngineResult(
@@ -153,24 +119,58 @@ class RuleEngine {
     return suggestions.take(5).toList();
   }
 
-  /// If the other person offered two options and neither matches the
-  /// user's saved preference for that category, and the preference is a
-  /// plausible third option, surface it (e.g. "chicken or meat?" -> add
-  /// user's saved protein choice like "fish" as a third option).
-  String? _thirdOptionFromPreference(String optionA, String optionB, UserProfile profile) {
+  static const List<String> _leadInStarters = [
+    'do you want', 'do you like', 'would you like', 'would you prefer',
+    'do you prefer', 'do you have', 'do you take', 'is it', 'are you',
+    'should we', 'shall we', 'do we get', 'which do you like', 'which one',
+    'هل ترغب في', 'هل تريد', 'هل تحب', 'تحب تاكل', 'تحب تشرب', 'تحب', 'عايز',
+    'عاوز', 'حابب', 'ممكن', 'انتا عايز', 'انت عاوز', 'تحب تاخد',
+  ];
+
+  List<String> _extractOptions(String text) {
+    String clean = text.trim();
+    if (clean.endsWith('?') || clean.endsWith('؟')) {
+      clean = clean.substring(0, clean.length - 1).trim();
+    }
+
+    for (final starter in _leadInStarters) {
+      if (clean.toLowerCase().startsWith(starter)) {
+        clean = clean.substring(starter.length).trim();
+        break;
+      }
+    }
+
+    final hasConnector = RegExp(r'\b(?:or|ولا|او|أو)\b|[,،]', caseSensitive: false).hasMatch(clean);
+    if (!hasConnector) return [];
+
+    final rawParts = clean.split(RegExp(r'[,،]|\s+\b(?:or|ولا|او|أو)\b\s+', caseSensitive: false));
+    final result = <String>[];
+
+    for (var part in rawParts) {
+      var trimmed = part.trim();
+      trimmed = trimmed.replaceAll(RegExp(r'^\b(?:or|ولا|او|أو)\b\s*', caseSensitive: false), '').trim();
+      if (trimmed.isNotEmpty && trimmed.split(' ').length <= 4) {
+        result.add(trimmed);
+      }
+    }
+
+    return result.length >= 2 ? result : [];
+  }
+
+  String? _thirdOptionFromPreference(List<String> options, UserProfile profile) {
     final protein = profile.preferences['protein'];
     if (protein == null || protein.isEmpty) return null;
     final proteinLower = protein.toLowerCase();
-    if (optionA.contains(proteinLower) || optionB.contains(proteinLower)) return null;
+    
+    final alreadyContains = options.any((opt) => opt.toLowerCase().contains(proteinLower));
+    if (alreadyContains) return null;
 
-    // Only offer this when the either/or options look food/protein related,
-    // to avoid injecting "chicken" into an unrelated either/or question.
     const proteinRelatedWords = [
       'chicken', 'meat', 'fish', 'beef', 'lamb', 'protein',
       'فراخ', 'لحمة', 'سمك', 'بروتين',
     ];
-    final isProteinContext = proteinRelatedWords.any(
-      (w) => optionA.contains(w) || optionB.contains(w),
+    final isProteinContext = options.any(
+      (opt) => proteinRelatedWords.any((w) => opt.toLowerCase().contains(w)),
     );
     if (!isProteinContext) return null;
 

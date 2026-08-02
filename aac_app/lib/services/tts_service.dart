@@ -25,7 +25,7 @@ class TtsService {
   /// (the seed phrasebook stores replies this way), splits on the slash
   /// and speaks only the half matching the user's language preference,
   /// unless preference is "mixed", in which case it speaks both.
-  Future<void> speak(String text, {String languagePreference = 'mixed'}) async {
+  Future<void> speak(String text, {String languagePreference = 'mixed', String ttsGender = 'female'}) async {
     await init();
 
     final parts = text.contains(' / ') ? text.split(' / ') : [text];
@@ -35,11 +35,11 @@ class TtsService {
       final arabicPart = _looksArabic(parts[0]) ? parts[0] : parts[1];
 
       if (languagePreference == 'english') {
-        await _speakLocalized(englishPart, 'en-US');
+        await _speakLocalized(englishPart, 'en-US', ttsGender);
         return;
       }
       if (languagePreference == 'arabicMSA' || languagePreference == 'egyptianArabic') {
-        await _speakLocalized(arabicPart, 'ar-EG');
+        await _speakLocalized(arabicPart, 'ar-EG', ttsGender);
         return;
       }
     }
@@ -47,13 +47,60 @@ class TtsService {
     // Mixed preference, or plain single-language text: speak each
     // detected segment with its matching voice, in order.
     for (final part in parts) {
-      await _speakLocalized(part.trim(), _looksArabic(part) ? 'ar-EG' : 'en-US');
+      await _speakLocalized(part.trim(), _looksArabic(part) ? 'ar-EG' : 'en-US', ttsGender);
     }
   }
 
-  Future<void> _speakLocalized(String text, String locale) async {
+  Future<void> _speakLocalized(String text, String locale, String gender) async {
     if (text.isEmpty) return;
     await _tts.setLanguage(locale);
+    
+    // Some known male/female identifiers in Google TTS to help it pick a real voice
+    // instead of relying on the word "male" being present in the name.
+    final List<String> knownMaleIds = ['-iom-', '-tpd-', '-rjs-', '-zgh-', '-c-', '-b-', 'male', 'samed'];
+    final List<String> knownFemaleIds = ['-sfg-', '-tpf-', '-rba-', '-a-', '-d-', 'female'];
+
+    bool foundVoice = false;
+    try {
+      final voices = await _tts.getVoices;
+      if (voices != null && voices is List) {
+        final targetVoices = voices.where((v) {
+          if (v is Map) {
+            final loc = v['locale']?.toString() ?? '';
+            final name = v['name']?.toString().toLowerCase() ?? '';
+            if (!loc.startsWith(locale.split('-').first)) return false;
+            
+            if (gender == 'male') {
+              return knownMaleIds.any((id) => name.contains(id)) && !name.contains('female');
+            } else {
+              return knownFemaleIds.any((id) => name.contains(id)) && !name.contains('male');
+            }
+          }
+          return false;
+        }).toList();
+        
+        if (targetVoices.isNotEmpty) {
+          // Prefer network voices if available as they sound better
+          targetVoices.sort((a, b) {
+            final aNet = (a['name']?.toString() ?? '').contains('network');
+            final bNet = (b['name']?.toString() ?? '').contains('network');
+            if (aNet && !bNet) return -1;
+            if (!aNet && bNet) return 1;
+            return 0;
+          });
+          
+          await _tts.setVoice({"name": targetVoices.first["name"], "locale": targetVoices.first["locale"]});
+          foundVoice = true;
+        }
+      }
+    } catch (_) {
+      // Ignore voice fetching errors
+    }
+
+    // DO NOT use pitch to simulate gender, it just sounds like a slow/distorted female voice.
+    // If a true male voice is not installed, it will just play the default voice.
+    await _tts.setPitch(1.0);
+    
     await _tts.speak(text);
   }
 

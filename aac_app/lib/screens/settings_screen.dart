@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/user_profile.dart';
 import '../services/storage_service.dart';
 import '../services/app_strings.dart';
-import '../services/llm_fallback_service.dart';
 import '../services/stt_service.dart';
+import '../services/local_ai_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'preferences_screen.dart';
 
@@ -149,82 +148,163 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const SizedBox(height: 16),
           Text(AppStrings.get('ui_lang', lang), style: Theme.of(context).textTheme.titleLarge),
-          RadioListTile<String>(
-            title: const Text('English'),
-            value: 'en',
+          RadioGroup<String>(
             groupValue: _profile.uiLanguage,
             onChanged: (v) async {
               setState(() => _profile.uiLanguage = v!);
               await widget.storage.saveProfile(_profile);
             },
-          ),
-          RadioListTile<String>(
-            title: const Text('العربية'),
-            value: 'ar',
-            groupValue: _profile.uiLanguage,
-            onChanged: (v) async {
-              setState(() => _profile.uiLanguage = v!);
-              await widget.storage.saveProfile(_profile);
-            },
+            child: const Column(
+              children: [
+                RadioListTile(title: Text('English'), value: 'en'),
+                RadioListTile(title: Text('العربية'), value: 'ar'),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Text('Speech Recognition Language', style: Theme.of(context).textTheme.titleLarge),
-          RadioListTile<String>(
-            title: const Text('English'),
-            value: 'english',
+          RadioGroup<String>(
             groupValue: _profile.languagePreference,
             onChanged: (v) async {
               setState(() => _profile.languagePreference = v!);
               await widget.storage.saveProfile(_profile);
             },
-          ),
-          RadioListTile<String>(
-            title: const Text('Arabic / العربية'),
-            value: 'mixed',
-            groupValue: _profile.languagePreference,
-            onChanged: (v) async {
-              setState(() => _profile.languagePreference = v!);
-              await widget.storage.saveProfile(_profile);
-            },
-          ),
-          const SizedBox(height: 24),
-          Text(AppStrings.get('select_ai', lang), style: Theme.of(context).textTheme.titleLarge),
-          _AiProviderPicker(
-            storage: widget.storage,
-            profile: _profile,
-            onChanged: (id) async {
-              setState(() => _profile.selectedAiProvider = id);
-              await widget.storage.saveProfile(_profile);
-            },
+            child: const Column(
+              children: [
+                RadioListTile(title: Text('English'), value: 'english'),
+                RadioListTile(title: Text('Arabic / العربية'), value: 'mixed'),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Text(AppStrings.get('theme_mode', lang), style: Theme.of(context).textTheme.titleLarge),
-          RadioListTile<String>(
-            title: Text(AppStrings.get('theme_light', lang)),
-            value: 'light',
+          RadioGroup<String>(
             groupValue: _profile.themeMode,
             onChanged: (v) async {
               setState(() => _profile.themeMode = v!);
               await widget.storage.saveProfile(_profile);
             },
+            child: Column(
+              children: [
+                RadioListTile(title: Text(AppStrings.get('theme_light', lang)), value: 'light'),
+                RadioListTile(title: Text(AppStrings.get('theme_dark', lang)), value: 'dark'),
+                RadioListTile(title: Text(AppStrings.get('theme_hc', lang)), value: 'highContrast'),
+              ],
+            ),
           ),
-          RadioListTile<String>(
-            title: Text(AppStrings.get('theme_dark', lang)),
-            value: 'dark',
-            groupValue: _profile.themeMode,
+          const SizedBox(height: 24),
+          Text('TTS Voice', style: Theme.of(context).textTheme.titleLarge),
+          RadioGroup<String>(
+            groupValue: _profile.preferences['tts_gender'] ?? 'female',
             onChanged: (v) async {
-              setState(() => _profile.themeMode = v!);
+              setState(() => _profile.preferences['tts_gender'] = v!);
               await widget.storage.saveProfile(_profile);
             },
+            child: const Column(
+              children: [
+                RadioListTile(title: Text('Female'), value: 'female'),
+                RadioListTile(title: Text('Male'), value: 'male'),
+              ],
+            ),
           ),
-          RadioListTile<String>(
-            title: Text(AppStrings.get('theme_hc', lang)),
-            value: 'highContrast',
-            groupValue: _profile.themeMode,
+          const SizedBox(height: 24),
+          Text('AI Mode', style: Theme.of(context).textTheme.titleLarge),
+          RadioGroup<String>(
+            groupValue: _profile.aiMode.isEmpty ? 'gemini' : _profile.aiMode,
             onChanged: (v) async {
-              setState(() => _profile.themeMode = v!);
+              if (v == 'local_on_device') {
+                final manager = LocalAiManager();
+                if (!await manager.checkHardwareSpecs()) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Device does not meet hardware requirements for local AI.')),
+                    );
+                  }
+                  return;
+                }
+                if (!await manager.isModelDownloaded()) {
+                  final ValueNotifier<double> progressNotifier = ValueNotifier(0.0);
+                  if (context.mounted) {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('Downloading Local AI'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ValueListenableBuilder<double>(
+                              valueListenable: progressNotifier,
+                              builder: (context, progress, child) {
+                                return Column(
+                                  children: [
+                                    LinearProgressIndicator(value: progress > 0 ? progress : null),
+                                    const SizedBox(height: 16),
+                                    Text(progress > 0 
+                                      ? 'Downloading... ${(progress * 100).toStringAsFixed(1)}%'
+                                      : 'Starting download (~400MB)...'),
+                                  ],
+                                );
+                              }
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  try {
+                    await manager.downloadModel(onProgress: (p) {
+                      progressNotifier.value = p;
+                    });
+                  } catch (e) {
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to download local model.')),
+                      );
+                    }
+                    return;
+                  }
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                }
+              }
+              setState(() => _profile.aiMode = v!);
               await widget.storage.saveProfile(_profile);
             },
+            child: const Column(
+              children: [
+                RadioListTile(
+                  title: Text('☁️  Cloud AI (Groq)'),
+                  subtitle: Text('Requires internet. Works on any device.'),
+                  value: 'gemini',
+                ),
+
+                RadioListTile(
+                  title: Text('📱  On-Device Local AI (Qwen2.5-0.5b)'),
+                  subtitle: Text('Truly offline. Requires good hardware & downloads ~400MB.'),
+                  value: 'local_on_device',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text('Custom Backend URL (Advanced)', style: Theme.of(context).textTheme.titleLarge),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              decoration: const InputDecoration(
+                hintText: 'e.g. http://192.168.0.101:8080/suggest',
+                border: OutlineInputBorder(),
+              ),
+              controller: TextEditingController(
+                text: _profile.preferences['backend_url'] ?? '',
+              ),
+              onChanged: (v) {
+                _profile.preferences['backend_url'] = v.trim();
+              },
+            ),
           ),
           const SizedBox(height: 24),
           Text(AppStrings.get('audio_mic', lang), style: Theme.of(context).textTheme.titleLarge),
@@ -278,7 +358,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               await widget.storage.saveProfile(_profile);
               if (!mounted) return;
-              Navigator.pop(context);
+              // ignore: use_build_context_synchronously
+              Navigator.of(context).pop();
             },
             child: Text(AppStrings.get('save', lang)),
           ),
@@ -301,7 +382,7 @@ class _VolumeBar extends StatelessWidget {
       height: 12,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.2),
+        color: Colors.grey.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(6),
       ),
       child: FractionallySizedBox(
@@ -318,64 +399,3 @@ class _VolumeBar extends StatelessWidget {
   }
 }
 
-class _AiProviderPicker extends StatefulWidget {
-  final StorageService storage;
-  final UserProfile profile;
-  final void Function(String) onChanged;
-
-  const _AiProviderPicker({
-    required this.storage,
-    required this.profile,
-    required this.onChanged,
-  });
-
-  @override
-  State<_AiProviderPicker> createState() => _AiProviderPickerState();
-}
-
-class _AiProviderPickerState extends State<_AiProviderPicker> {
-  List<AiProvider> _providers = [];
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch();
-  }
-
-  Future<void> _fetch() async {
-    try {
-      final service = LlmFallbackService(
-        backendEndpoint: LlmFallbackService.defaultBackendUrl,
-      );
-      final result = await service.getProviders();
-      if (mounted) {
-        setState(() {
-          _providers = result?.providers ?? [];
-        });
-      }
-    } catch (_) {
-      // Fail silently, list stays empty
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) return const LinearProgressIndicator();
-    if (_providers.isEmpty) return const Text('Using system default AI.');
-
-    return Column(
-      children: _providers.map((p) {
-        return RadioListTile<String>(
-          title: Text(p.label),
-          subtitle: Text(p.model),
-          value: p.id,
-          groupValue: widget.profile.selectedAiProvider,
-          onChanged: (v) => widget.onChanged(v!),
-        );
-      }).toList(),
-    );
-  }
-}

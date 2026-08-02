@@ -55,6 +55,11 @@ class UserProfile extends HiveObject {
   @HiveField(12)
   bool shareLocationWithAi;
 
+  /// The user's preferred AI backend: 'gemini' (cloud) or 'ollama' (local).
+  /// The backend will try this first and fall back gracefully if unavailable.
+  @HiveField(13)
+  String aiMode;
+
   UserProfile({
     required this.name,
     this.languagePreference = 'mixed',
@@ -68,6 +73,7 @@ class UserProfile extends HiveObject {
     this.selectedAiProvider = 'default',
     List<ContactEntry>? contacts,
     this.shareLocationWithAi = false,
+    this.aiMode = '',         // '' means "use server default"
   })  : preferences = preferences ?? {},
         relationshipTones = relationshipTones ?? {},
         contacts = contacts ?? [];

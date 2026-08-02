@@ -1,8 +1,8 @@
 import 'package:hive/hive.dart';
 import 'user_profile.dart';
 import 'conversation_entry.dart';
+import 'conversation_session.dart';
 import 'phrase_entry.dart';
-
 import 'contact_entry.dart';
 
 /// Manual adapters (no build_runner needed). Registered once in main.dart
@@ -116,13 +116,14 @@ class ConversationEntryAdapter extends TypeAdapter<ConversationEntry> {
       contactRelationship: fields[3] as String?,
       timestamp: fields[4] as DateTime? ?? DateTime.now(),
       wasAutoReplied: fields[5] as bool? ?? false,
+      sessionId: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ConversationEntry obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.otherPersonText)
       ..writeByte(1)
@@ -134,7 +135,9 @@ class ConversationEntryAdapter extends TypeAdapter<ConversationEntry> {
       ..writeByte(4)
       ..write(obj.timestamp)
       ..writeByte(5)
-      ..write(obj.wasAutoReplied);
+      ..write(obj.wasAutoReplied)
+      ..writeByte(6)
+      ..write(obj.sessionId);
   }
 }
 
@@ -174,11 +177,52 @@ class PhraseEntryAdapter extends TypeAdapter<PhraseEntry> {
   }
 }
 
+class ConversationSessionAdapter extends TypeAdapter<ConversationSession> {
+  @override
+  final int typeId = 4;
+
+  @override
+  ConversationSession read(BinaryReader reader) {
+    final numFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numFields; i++) reader.readByte(): reader.read(),
+    };
+    return ConversationSession(
+      id: fields[0] as String,
+      displayName: fields[1] as String,
+      contactId: fields[2] as String?,
+      isStranger: fields[3] as bool? ?? false,
+      createdAt: fields[4] as DateTime?,
+      lastMessageAt: fields[5] as DateTime?,
+      notes: fields[6] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, ConversationSession obj) {
+    writer
+      ..writeByte(7)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.displayName)
+      ..writeByte(2)
+      ..write(obj.contactId)
+      ..writeByte(3)
+      ..write(obj.isStranger)
+      ..writeByte(4)
+      ..write(obj.createdAt)
+      ..writeByte(5)
+      ..write(obj.lastMessageAt)
+      ..writeByte(6)
+      ..write(obj.notes);
+  }
+}
+
 void registerHiveAdapters() {
   if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(UserProfileAdapter());
-  if (!Hive.isAdapterRegistered(1)) {
-    Hive.registerAdapter(ConversationEntryAdapter());
-  }
+  if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ConversationEntryAdapter());
   if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(PhraseEntryAdapter());
   if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(ContactEntryAdapter());
+  if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(ConversationSessionAdapter());
 }

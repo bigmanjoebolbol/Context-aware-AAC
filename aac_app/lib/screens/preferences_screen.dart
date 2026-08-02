@@ -105,7 +105,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
             onChanged: (v) => _profile.preferences['emergency_contact'] = v,
           ),
           const SizedBox(height: 16),
-          _SectionHeader(title: 'Context & Safety'),
+          const _SectionHeader(title: 'Context & Safety'),
           SwitchListTile(
             title: const Text('Share location with AI'),
             subtitle: const Text('Allows AI to suggest replies based on where you are (e.g. at a shop)'),

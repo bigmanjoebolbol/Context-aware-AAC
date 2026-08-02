@@ -1,12 +1,71 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
   <component name="CMakeSettings">
     <configurations>
       <configuration PROFILE_NAME="Debug" ENABLED="true" CONFIG_NAME="Debug" />
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a55edb6a-281f-4cda-b19b-0347d77f7838" name="Changes" comment="" />
+    <list default="true" id="a55edb6a-281f-4cda-b19b-0347d77f7838" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/Context-aware AAC.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Context-aware AAC.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/.lock" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/dependencies.dependencies_hash_file.json" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/dependencies.dependencies_hash_file.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/hook.dependencies_hash_file.json" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/hook.dependencies_hash_file.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/hook.dill" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/hook.dill" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/hook.dill.d" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/hook.dill.d" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/input.json" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/input.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/output.json" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/output.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/stdout.txt" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/objective_c/337ce265dc/stdout.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/shared/objective_c/.lock" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/hooks_runner/shared/objective_c/.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/package_config.json" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/package_config.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.dart_tool/package_graph.json" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.dart_tool/package_graph.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.flutter-plugins-dependencies" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.flutter-plugins-dependencies" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/.metadata" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/.metadata" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/android/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/android/app/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/android/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/android/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/android/gradle/wrapper/gradle-wrapper.properties" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/android/gradle/wrapper/gradle-wrapper.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/android/settings.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/android/settings.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/0418b486ce914458ba04093ce00d4980.cache.dill.track.dill" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/5adece107e9815831e10d64fe90f3d5f/_composite.stamp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/5adece107e9815831e10d64fe90f3d5f/gen_dart_plugin_registrant.stamp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/5adece107e9815831e10d64fe90f3d5f/gen_localizations.stamp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/AssetManifest.bin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/AssetManifest.bin.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/FontManifest.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/NOTICES" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/fonts/MaterialIcons-Regular.otf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/packages/cupertino_icons/assets/CupertinoIcons.ttf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/shaders/ink_sparkle.frag" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/flutter_assets/shaders/stretch_effect.frag" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/build/last_build_run.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/models/user_profile.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/models/user_profile.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/screens/contacts_management_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/screens/contacts_management_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/screens/conversation_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/screens/conversation_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/screens/onboarding_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/screens/onboarding_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/screens/preferences_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/screens/preferences_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/screens/settings_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/screens/settings_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/services/llm_fallback_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/services/llm_fallback_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/services/phrasebook_seed.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/services/phrasebook_seed.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/services/rule_engine.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/services/rule_engine.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/lib/services/stt_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/lib/services/stt_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/linux/flutter/generated_plugin_registrant.cc" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/linux/flutter/generated_plugin_registrant.cc" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/linux/flutter/generated_plugin_registrant.h" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/linux/flutter/generated_plugin_registrant.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/linux/flutter/generated_plugins.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/linux/flutter/generated_plugins.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/macos/Flutter/GeneratedPluginRegistrant.swift" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/macos/Flutter/GeneratedPluginRegistrant.swift" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/pubspec.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/pubspec.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/test/widget_test.dart" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/test/widget_test.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/windows/flutter/generated_plugin_registrant.cc" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/windows/flutter/generated_plugin_registrant.cc" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/windows/flutter/generated_plugin_registrant.h" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/windows/flutter/generated_plugin_registrant.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_app/windows/flutter/generated_plugins.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/aac_app/windows/flutter/generated_plugins.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_backend/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/aac_backend/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_backend/index.js" beforeDir="false" afterPath="$PROJECT_DIR$/aac_backend/index.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/aac_backend/providers/registry.js" beforeDir="false" afterPath="$PROJECT_DIR$/aac_backend/providers/registry.js" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -15,25 +74,43 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 8
-}]]></component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8
+}</component>
   <component name="ProjectId" id="3HHG0MKUFZIehtmeXsGPG6jRArq" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "nodejs_package_manager_path": "npm",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Flutter.aac_app.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/NAID internship/Context-aware-AAC&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;AndroidSdkUpdater&quot;,
+    &quot;show.migrate.to.gradle.popup&quot;: &quot;false&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
+  <component name="RunManager">
+    <configuration name="aac_app" type="FlutterRunConfigurationType" factoryName="Flutter">
+      <option name="filePath" value="$PROJECT_DIR$/aac_app/lib/main.dart" />
+      <method v="2" />
+    </configuration>
+  </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">

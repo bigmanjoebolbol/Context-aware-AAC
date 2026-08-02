@@ -98,17 +98,65 @@ List<PhraseEntry> defaultPhrasebook() {
       },
     ),
     PhraseEntry(
-      triggerKey: 'pain_check',
+      triggerKey: 'greetings_general',
       variants: [
-        'are you in pain',
-        'does it hurt',
-        'وجعك',
-        'بيوجعك',
+        'hello',
+        'hi',
+        'hey',
+        'أهلا',
+        'اهلاً',
+        'مرحبا',
+        'سلام عليكم',
+        'السلام عليكم',
+        'أهلاً وسهلاً',
       ],
       replyScores: {
-        'No / لأ': 2,
-        'A little / شوية': 1,
-        'Yes, quite a bit / أيوة كتير': 1,
+        'Hello! / أهلاً وسهلاً': 3,
+        'Hi there! / أهلاً بك': 2,
+        'Peace be upon you / وعليكم السلام': 2,
+      },
+    ),
+    PhraseEntry(
+      triggerKey: 'good_morning',
+      variants: [
+        'good morning',
+        'morning',
+        'صباح الخير',
+        'صباح النور',
+        'صباح الفل',
+      ],
+      replyScores: {
+        'Good morning! / صباح النور': 3,
+        'Morning! / صباح الفل': 2,
+      },
+    ),
+    PhraseEntry(
+      triggerKey: 'good_evening',
+      variants: [
+        'good evening',
+        'evening',
+        'مساء الخير',
+        'مساء النور',
+        'مساء الفل',
+      ],
+      replyScores: {
+        'Good evening! / مساء النور': 3,
+        'Evening! / مساء الفل': 2,
+      },
+    ),
+    PhraseEntry(
+      triggerKey: 'thank_you',
+      variants: [
+        'thank you',
+        'thanks',
+        'شكرا',
+        'شكراً',
+        'تسلم',
+        'شكرا جزيلا',
+      ],
+      replyScores: {
+        'You\'re welcome! / العفو': 3,
+        'Anytime! / حبيبي تسلم': 2,
       },
     ),
   ];

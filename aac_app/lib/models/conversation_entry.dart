@@ -41,6 +41,9 @@ class ConversationEntry extends HiveObject {
   @HiveField(5)
   bool wasAutoReplied;
 
+  @HiveField(6)
+  String? sessionId; // links to ConversationSession.id; null = transient/quick chat
+
   ConversationEntry({
     required this.otherPersonText,
     this.chosenReply,
@@ -48,5 +51,6 @@ class ConversationEntry extends HiveObject {
     this.contactRelationship,
     DateTime? timestamp,
     this.wasAutoReplied = false,
+    this.sessionId,
   }) : timestamp = timestamp ?? DateTime.now();
 }

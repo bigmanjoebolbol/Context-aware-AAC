@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/conversation_entry.dart';
+import '../models/conversation_session.dart';
 import '../models/phrase_entry.dart';
 import '../models/user_profile.dart';
 import '../services/storage_service.dart';
@@ -11,12 +12,15 @@ import '../services/llm_fallback_service.dart';
 import '../services/app_strings.dart';
 import '../services/location_service.dart';
 import '../models/contact_entry.dart';
+import '../services/local_ai_manager.dart';
+import '../services/on_device_llm_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'settings_screen.dart';
 
 class ConversationScreen extends StatefulWidget {
   final StorageService storage;
-  const ConversationScreen({super.key, required this.storage});
+  final ConversationSession? session;
+  const ConversationScreen({super.key, required this.storage, this.session});
 
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
@@ -27,10 +31,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final TtsService _tts = TtsService();
   final SttService _stt = SttService();
   final LocationService _location = LocationService();
-  final LlmFallbackService _llm = LlmFallbackService(
-    backendEndpoint: LlmFallbackService.defaultBackendUrl,
-    sharedSecret: null, // set to match APP_SHARED_SECRET on the backend
-  );
+  late LlmFallbackService _llm;
+  final OnDeviceLlmService _onDeviceLlm = OnDeviceLlmService();
 
   final TextEditingController _inputController = TextEditingController();
   final TextEditingController _replyController = TextEditingController();
@@ -49,14 +51,69 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Timer? _debounceTimer;
   Timer? _inputDebounce;
 
+  
+  List<ConversationEntry> _history = [];
+  final ScrollController _scrollController = ScrollController();
+
+  void _loadHistory() {
+    if (!mounted) return;
+    setState(() {
+      _history = widget.storage
+          .recentHistory(limit: 50, sessionId: widget.session?.id)
+          .toList()
+          .reversed
+          .toList();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _editEntry(ConversationEntry entry, bool isOtherPerson) async {
+    final controller = TextEditingController(text: isOtherPerson ? entry.otherPersonText : (entry.chosenReply ?? ''));
+    final newText = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Edit Message'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(c, controller.text), child: const Text('Save')),
+        ],
+      )
+    );
+    if (newText != null && newText.trim().isNotEmpty) {
+      if (isOtherPerson) {
+        entry.otherPersonText = newText.trim();
+        await entry.save();
+        if (entry == _history.last && (entry.chosenReply == null || entry.chosenReply!.isEmpty)) {
+          _process(entry.otherPersonText);
+        }
+      } else {
+        entry.chosenReply = newText.trim();
+        await entry.save();
+      }
+      _loadHistory();
+    }
+  }
+
   late UserProfile _profile;
 
   @override
   void initState() {
     super.initState();
     _profile = widget.storage.getProfile()!;
+    _llm = LlmFallbackService();
     _inputController.addListener(_onInputChanged);
     _initLocation();
+    // Load persisted history immediately so the chat is visible on open
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHistory());
   }
 
   Future<void> _initLocation() async {
@@ -100,6 +157,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
     // Always clear the debounce timer when new text arrives
     _debounceTimer?.cancel();
 
+    // Clear previous suggestions when the question changes
+    // so the user always sees suggestions relevant to the CURRENT question.
+    if (trimmed != _heardText) {
+      setState(() {
+        _suggestions = [];
+        _modelName = null;
+      });
+    }
+
     final phrasebook = widget.storage.getPhrasebook();
     final result = _ruleEngine.process(
       text: trimmed,
@@ -120,6 +186,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (!isRealTime && _profile.autoReplyEnabled && _suggestions.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 1000));
         await _choose(_suggestions.first, auto: true);
+        return;
+      }
+
+      // Even when phrasebook handles it, also fetch AI suggestions in parallel
+      // so the user gets richer options alongside the quick answers.
+      if (!isRealTime) {
+        _fetchLlmSuggestions(trimmed); // fire-and-forget (merges into _suggestions)
+      } else {
+        _debounceTimer = Timer(const Duration(milliseconds: 800), () {
+          _fetchLlmSuggestions(trimmed);
+        });
       }
       return;
     }
@@ -145,22 +222,71 @@ class _ConversationScreenState extends State<ConversationScreen> {
     setState(() => _loadingLlm = true);
 
     try {
-      final history = widget.storage.recentHistory(limit: 5);
-      final llmResult = await _llm.getSuggestions(
-        otherPersonText: text,
-        profile: _profile,
-        history: history,
-        currentContact: _activeContact,
-        locationContext: _currentLocation,
+      final history = widget.storage.recentHistory(
+        limit: 10,
+        sessionId: widget.session?.id,
       );
+      
+      SuggestResult llmResult;
+      
+      if (_profile.aiMode == 'local_on_device') {
+        final manager = LocalAiManager();
+        final isDownloaded = await manager.isModelDownloaded();
+        if (isDownloaded) {
+          final modelPath = await manager.getModelPath();
+          await _onDeviceLlm.initialize(modelPath);
+          llmResult = await _onDeviceLlm.suggestReplies(
+            otherPersonText: text,
+            profile: _profile,
+            history: history,
+            otherPersonName: widget.session?.displayName,
+            sessionNotes: widget.session?.notes,
+          );
+        } else {
+          // Fallback if not downloaded (e.g., bypassed onboarding somehow)
+          llmResult = await _llm.getSuggestions(
+            otherPersonText: text,
+            profile: _profile,
+            history: history,
+            currentContact: _activeContact,
+            locationContext: _currentLocation,
+            otherPersonName: widget.session?.displayName,
+            sessionNotes: widget.session?.notes,
+          );
+        }
+      } else {
+        llmResult = await _llm.getSuggestions(
+          otherPersonText: text,
+          profile: _profile,
+          history: history,
+          currentContact: _activeContact,
+          locationContext: _currentLocation,
+          otherPersonName: widget.session?.displayName,
+          sessionNotes: widget.session?.notes,
+        );
+      }
 
       if (!mounted) return;
 
+      if (llmResult.error != null && llmResult.error!.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('AI Error: ${llmResult.error}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+
       setState(() {
         _modelName = llmResult.model;
-        _suggestions = llmResult.suggestions
+        // Merge AI suggestions with any existing phrasebook suggestions
+        final existing = _suggestions.map((s) => s.text.toLowerCase()).toSet();
+        final newSuggestions = llmResult.suggestions
+            .where((r) => !existing.contains(r.toLowerCase()))
             .map((r) => Suggestion(text: r, source: SuggestionSource.llm))
             .toList();
+        _suggestions = [..._suggestions, ...newSuggestions];
       });
 
       if (_profile.autoReplyEnabled && _suggestions.isNotEmpty) {
@@ -175,13 +301,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _choose(Suggestion suggestion, {bool auto = false}) async {
-    await _tts.speak(suggestion.text, languagePreference: _profile.languagePreference);
+    await _tts.speak(
+      suggestion.text,
+      languagePreference: _profile.languagePreference,
+      ttsGender: _profile.preferences['tts_gender'] ?? 'female',
+    );
 
     await widget.storage.logEntry(ConversationEntry(
       otherPersonText: _heardText,
       chosenReply: suggestion.text,
       questionType: (_lastType ?? QuestionType.openEnded).name,
       wasAutoReplied: auto,
+      sessionId: widget.session?.id,
     ));
 
     if (_matchedPhrase != null) {
@@ -200,10 +331,30 @@ class _ConversationScreenState extends State<ConversationScreen> {
           chosenReply: suggestion.text,
         );
       }
+    } else if (suggestion.source == SuggestionSource.custom && _heardText.isNotEmpty) {
+      // User typed a custom reply to the heard text. Save this as a learned fact.
+      final currentFacts = _profile.preferences['learned_facts'] ?? '';
+      final newFact = "When asked '$_heardText', user replied: '${suggestion.text}'";
+      final factsList = currentFacts.isNotEmpty ? currentFacts.split('\n') : <String>[];
+      factsList.add('- $newFact');
+      
+      // Keep only the last 15 custom facts to prevent infinite growth
+      if (factsList.length > 15) {
+        factsList.removeRange(0, factsList.length - 15);
+      }
+      
+      _profile.preferences['learned_facts'] = factsList.join('\n');
+      await widget.storage.saveProfile(_profile);
     }
 
-    // After choosing, we clear the INPUT but keep the HEARD TEXT and SUGGESTIONS
-    // so the user can still see them if needed. They will be replaced on next input.
+    // Clear the pending state — the exchange is now saved to history
+    // and will appear as a proper chat bubble pair via _loadHistory().
+    setState(() {
+      _heardText = '';
+      _suggestions = [];
+      _modelName = null;
+    });
+    _loadHistory();
     _inputController.clear();
     _replyController.clear();
 
@@ -211,6 +362,42 @@ class _ConversationScreenState extends State<ConversationScreen> {
       // Small pause to allow TTS to start without mic picking up self-voice
       await Future.delayed(const Duration(milliseconds: 1000));
     }
+  }
+
+  Widget _buildChatBubble(String text, {required bool isOtherPerson, void Function()? onEdit}) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: isOtherPerson ? Alignment.centerLeft : Alignment.centerRight,
+      child: GestureDetector(
+        onLongPress: onEdit,
+        onDoubleTap: onEdit,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+          decoration: BoxDecoration(
+            color: isOtherPerson
+                ? theme.colorScheme.surfaceContainerHighest
+                : theme.colorScheme.primary,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(20),
+              topRight: const Radius.circular(20),
+              bottomLeft: isOtherPerson ? const Radius.circular(4) : const Radius.circular(20),
+              bottomRight: !isOtherPerson ? const Radius.circular(4) : const Radius.circular(20),
+            ),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 16,
+              color: isOtherPerson
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleListening() async {
@@ -306,8 +493,38 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('${AppStrings.get('hi', lang)}, ${_profile.name}'),
+        title: widget.session != null
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(widget.session!.displayName,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('${AppStrings.get('hi', lang)}, ${_profile.name}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+                ],
+              )
+            : Text('${AppStrings.get('hi', lang)}, ${_profile.name}'),
         actions: [
+          DropdownButton<String>(
+            value: _profile.tonePreference,
+            icon: const Padding(
+              padding: EdgeInsets.only(left: 4.0),
+              child: Icon(Icons.mood, size: 20),
+            ),
+            underline: const SizedBox(),
+            items: const [
+              DropdownMenuItem(value: 'casual', child: Text('Casual')),
+              DropdownMenuItem(value: 'formal', child: Text('Formal')),
+              DropdownMenuItem(value: 'mixed', child: Text('Mixed')),
+            ],
+            onChanged: (v) async {
+              if (v != null) {
+                setState(() => _profile.tonePreference = v);
+                await widget.storage.saveProfile(_profile);
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () async {
@@ -316,7 +533,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   builder: (_) => SettingsScreen(storage: widget.storage),
                 ),
               );
-              setState(() => _profile = widget.storage.getProfile()!);
+              setState(() {
+                _profile = widget.storage.getProfile()!;
+                _llm = LlmFallbackService();
+              });
             },
           ),
         ],
@@ -363,87 +583,175 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   ],
                 ),
               ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_profile.autoReplyEnabled) _AutoReplyBanner(uiLanguage: lang),
-                    Row(
-                      children: [
                         Expanded(
-                          child: TextField(
-                            controller: _inputController,
-                            decoration: InputDecoration(
-                              hintText: AppStrings.get('mic_hint', lang),
-                              border: const OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          children: [
-                            IconButton.filled(
-                              icon: Icon(_listening ? Icons.stop : Icons.mic),
-                              onPressed: _toggleListening,
-                            ),
-                            Text(
-                              _profile.languagePreference == 'english' ? 'EN' : 'AR',
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ],
+              child: Column(
+                children: [
+                  if (_profile.autoReplyEnabled) _AutoReplyBanner(uiLanguage: lang),
+                  // Chat History
+                  Expanded(
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      // Show heard text as a pending bubble ALWAYS while non-empty,
+                      // even when suggestions are showing — it stays until the user replies.
+                      itemCount: _history.length + (_heardText.isNotEmpty ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index < _history.length) {
+                          final entry = _history[index];
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (entry.otherPersonText.isNotEmpty)
+                                _buildChatBubble(entry.otherPersonText, isOtherPerson: true, onEdit: () => _editEntry(entry, true)),
+                              if (entry.chosenReply != null && entry.chosenReply!.isNotEmpty)
+                                _buildChatBubble(entry.chosenReply!, isOtherPerson: false, onEdit: () => _editEntry(entry, false)),
+                            ],
+                          );
+                        } else {
+                          // Unanswered heard text
+                          return _buildChatBubble(_heardText, isOtherPerson: true, onEdit: null);
+                        }
+                      },
                     ),
-                    const SizedBox(height: 24),
-                    Center(
-                      child: RepaintBoundary(
-                        child: ValueListenableBuilder<double>(
-                          valueListenable: _soundLevelNotifier,
-                          builder: (context, level, _) {
-                            return _WaveformIndicator(listening: _listening, level: level);
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    if (_lastType != null)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  ),
+                  
+                  // Waveform and Status
+                  if (_listening || _loadingLlm || _lastType != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
                         children: [
-                          _QuestionTypeBadge(type: _lastType!, uiLanguage: lang),
-                          if (_modelName != null) _AiStatusBadge(modelName: _modelName!, uiLanguage: lang),
+                          if (_listening) ...([
+                            // Live STT preview
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: _inputController.text.isNotEmpty
+                                  ? Container(
+                                      key: const ValueKey('stt_preview'),
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 10),
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .secondaryContainer
+                                            .withValues(alpha: 0.7),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .secondary
+                                              .withValues(alpha: 0.4),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.hearing,
+                                              size: 16,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .secondary),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              _inputController.text,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontStyle: FontStyle.italic,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSecondaryContainer,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(
+                                      key: ValueKey('stt_empty')),
+                            ),
+                            // Waveform
+                            SizedBox(
+                              height: 60,
+                              child: Center(
+                                child: RepaintBoundary(
+                                  child: ValueListenableBuilder<double>(
+                                    valueListenable: _soundLevelNotifier,
+                                    builder: (context, level, _) =>
+                                        _WaveformIndicator(
+                                            listening: _listening, level: level),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ]),
+                          if (_lastType != null || _modelName != null)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                if (_lastType != null) Flexible(child: _QuestionTypeBadge(type: _lastType!, uiLanguage: lang)),
+                                if (_modelName != null) Flexible(child: _AiStatusBadge(modelName: _modelName!, uiLanguage: lang)),
+                              ],
+                            ),
+                          if (_loadingLlm) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
                         ],
                       ),
-                    const SizedBox(height: 12),
-                    if (_loadingLlm) const LinearProgressIndicator(),
-                    Expanded(
+                    ),
+
+                  // Suggestions
+                  if (_suggestions.isNotEmpty)
+                    Container(
+                      height: 100,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: ListView(
-                        children: [
-                          ..._suggestions.map(
-                            (s) => Card(
-                              child: ListTile(
-                                title: Text(s.text, style: const TextStyle(fontSize: 18)),
-                                subtitle: Text(_sourceLabel(s.source, lang)),
-                                onTap: () => _choose(s),
+                        scrollDirection: Axis.horizontal,
+                        children: _suggestions.map((s) => Padding(
+                          padding: const EdgeInsets.only(right: 8, bottom: 8),
+                          child: InkWell(
+                            onTap: () => _choose(s),
+                            child: Container(
+                              width: 220,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: Text(s.text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
+                                  Text(_sourceLabel(s.source, lang), style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.primary)),
+                                ],
                               ),
                             ),
                           ),
-                        ],
+                        )).toList(),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
+
+                  // Input row
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
                       children: [
+                        IconButton.filled(
+                          icon: Icon(_listening ? Icons.stop : Icons.mic),
+                          onPressed: _toggleListening,
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
                             controller: _replyController,
                             decoration: InputDecoration(
                               hintText: AppStrings.get('my_reply_hint', lang),
-                              border: const OutlineInputBorder(),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             ),
-                            onSubmitted: (v) => _choose(Suggestion(text: v, source: SuggestionSource.custom)),
+                            onSubmitted: (v) {
+                              if (v.trim().isNotEmpty) _choose(Suggestion(text: v.trim(), source: SuggestionSource.custom));
+                            },
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -451,17 +759,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           icon: const Icon(Icons.send),
                           onPressed: () {
                             if (_replyController.text.trim().isNotEmpty) {
-                              _choose(Suggestion(
-                                text: _replyController.text.trim(),
-                                source: SuggestionSource.custom,
-                              ));
+                              _choose(Suggestion(text: _replyController.text.trim(), source: SuggestionSource.custom));
                             }
                           },
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -549,7 +854,7 @@ class _AiStatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.shade300),
       ),
@@ -558,9 +863,12 @@ class _AiStatusBadge extends StatelessWidget {
         children: [
           Icon(isOffline ? Icons.cloud_off : Icons.auto_awesome, size: 14, color: color),
           const SizedBox(width: 4),
-          Text(
-            isOffline ? 'Offline Mode' : '${AppStrings.get('ai_active', uiLanguage)}: $modelName',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+          Flexible(
+            child: Text(
+              isOffline ? 'Offline Mode' : '${AppStrings.get('ai_active', uiLanguage)}: $modelName',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -583,7 +891,7 @@ class _WaveformIndicator extends StatelessWidget {
           level: listening ? level : -2.0, // Show a flat line when not listening
           color: listening 
               ? Theme.of(context).colorScheme.primary 
-              : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
         ),
       ),
     );
