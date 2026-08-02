@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/user_profile.dart';
 import '../models/conversation_entry.dart';
@@ -9,7 +10,7 @@ import 'phrasebook_seed.dart';
 /// is offline - no network call is ever made from this class. This is
 /// deliberate: the user's profile and phrasebook must always be readable
 /// and writable even with zero connectivity.
-class StorageService {
+class StorageService extends ChangeNotifier {
   static const _profileBoxName = 'profile_box';
   static const _phrasebookBoxName = 'phrasebook_box';
   static const _historyBoxName = 'history_box';
@@ -45,6 +46,7 @@ class StorageService {
     } else {
       await _profileBox.putAt(0, profile);
     }
+    notifyListeners();
   }
 
   // ---------- Phrasebook ----------

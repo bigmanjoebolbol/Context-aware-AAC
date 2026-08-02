@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'contact_entry.dart';
 
 /// The user's language preference for suggestion generation and TTS output.
 enum AppLanguage { english, arabicMSA, egyptianArabic, mixed }
@@ -34,6 +35,26 @@ class UserProfile extends HiveObject {
   @HiveField(6)
   bool onboardingComplete;
 
+  /// The language of the app UI (en, ar).
+  @HiveField(8)
+  String uiLanguage;
+
+  /// The theme mode of the app (light, dark, highContrast).
+  @HiveField(9)
+  String themeMode;
+
+  /// The selected AI provider ID (groq, gemini, claude, or 'default').
+  @HiveField(10)
+  String selectedAiProvider;
+
+  /// User's key contacts for context.
+  @HiveField(11)
+  List<ContactEntry> contacts;
+
+  /// Whether to automatically share location context with AI.
+  @HiveField(12)
+  bool shareLocationWithAi;
+
   UserProfile({
     required this.name,
     this.languagePreference = 'mixed',
@@ -42,6 +63,12 @@ class UserProfile extends HiveObject {
     Map<String, String>? relationshipTones,
     this.autoReplyEnabled = false,
     this.onboardingComplete = false,
+    this.uiLanguage = 'en',
+    this.themeMode = 'light',
+    this.selectedAiProvider = 'default',
+    List<ContactEntry>? contacts,
+    this.shareLocationWithAi = false,
   })  : preferences = preferences ?? {},
-        relationshipTones = relationshipTones ?? {};
+        relationshipTones = relationshipTones ?? {},
+        contacts = contacts ?? [];
 }

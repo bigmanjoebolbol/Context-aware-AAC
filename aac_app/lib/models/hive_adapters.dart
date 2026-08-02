@@ -3,6 +3,8 @@ import 'user_profile.dart';
 import 'conversation_entry.dart';
 import 'phrase_entry.dart';
 
+import 'contact_entry.dart';
+
 /// Manual adapters (no build_runner needed). Registered once in main.dart
 /// via [registerHiveAdapters]. If you later prefer generated adapters,
 /// swap these out for `part 'x.g.dart'` + `flutter pub run build_runner build`.
@@ -18,20 +20,25 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
       for (int i = 0; i < numFields; i++) reader.readByte(): reader.read(),
     };
     return UserProfile(
-      name: fields[0] as String,
-      languagePreference: fields[1] as String,
-      tonePreference: fields[2] as String,
-      preferences: Map<String, String>.from(fields[3] as Map),
-      relationshipTones: Map<String, String>.from(fields[4] as Map),
-      autoReplyEnabled: fields[5] as bool,
-      onboardingComplete: fields[6] as bool,
+      name: fields[0] as String? ?? 'Friend',
+      languagePreference: fields[1] as String? ?? 'mixed',
+      tonePreference: fields[2] as String? ?? 'mixed',
+      preferences: (fields[3] as Map?)?.cast<String, String>() ?? {},
+      relationshipTones: (fields[4] as Map?)?.cast<String, String>() ?? {},
+      autoReplyEnabled: fields[5] as bool? ?? false,
+      onboardingComplete: fields[6] as bool? ?? false,
+      uiLanguage: fields[8] as String? ?? 'en',
+      themeMode: fields[9] as String? ?? 'light',
+      selectedAiProvider: fields[10] as String? ?? 'default',
+      contacts: (fields[11] as List?)?.cast<ContactEntry>() ?? [],
+      shareLocationWithAi: fields[12] as bool? ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, UserProfile obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.name)
       ..writeByte(1)
@@ -45,7 +52,50 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
       ..writeByte(5)
       ..write(obj.autoReplyEnabled)
       ..writeByte(6)
-      ..write(obj.onboardingComplete);
+      ..write(obj.onboardingComplete)
+      ..writeByte(8)
+      ..write(obj.uiLanguage)
+      ..writeByte(9)
+      ..write(obj.themeMode)
+      ..writeByte(10)
+      ..write(obj.selectedAiProvider)
+      ..writeByte(11)
+      ..write(obj.contacts)
+      ..writeByte(12)
+      ..write(obj.shareLocationWithAi);
+  }
+}
+
+class ContactEntryAdapter extends TypeAdapter<ContactEntry> {
+  @override
+  final int typeId = 3;
+
+  @override
+  ContactEntry read(BinaryReader reader) {
+    final numFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numFields; i++) reader.readByte(): reader.read(),
+    };
+    return ContactEntry(
+      id: fields[0] as String,
+      name: fields[1] as String,
+      relationship: fields[2] as String,
+      preferredTone: fields[3] as String? ?? 'mixed',
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, ContactEntry obj) {
+    writer
+      ..writeByte(4)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.name)
+      ..writeByte(2)
+      ..write(obj.relationship)
+      ..writeByte(3)
+      ..write(obj.preferredTone);
   }
 }
 
@@ -60,12 +110,12 @@ class ConversationEntryAdapter extends TypeAdapter<ConversationEntry> {
       for (int i = 0; i < numFields; i++) reader.readByte(): reader.read(),
     };
     return ConversationEntry(
-      otherPersonText: fields[0] as String,
+      otherPersonText: fields[0] as String? ?? '',
       chosenReply: fields[1] as String?,
-      questionType: fields[2] as String,
+      questionType: fields[2] as String? ?? 'openEnded',
       contactRelationship: fields[3] as String?,
-      timestamp: fields[4] as DateTime,
-      wasAutoReplied: fields[5] as bool,
+      timestamp: fields[4] as DateTime? ?? DateTime.now(),
+      wasAutoReplied: fields[5] as bool? ?? false,
     );
   }
 
@@ -99,10 +149,10 @@ class PhraseEntryAdapter extends TypeAdapter<PhraseEntry> {
       for (int i = 0; i < numFields; i++) reader.readByte(): reader.read(),
     };
     return PhraseEntry(
-      triggerKey: fields[0] as String,
-      variants: List<String>.from(fields[1] as List),
-      replyScores: Map<String, double>.from(fields[2] as Map),
-      injectPreference: fields[3] as bool,
+      triggerKey: fields[0] as String? ?? '',
+      variants: (fields[1] as List?)?.cast<String>() ?? [],
+      replyScores: (fields[2] as Map?)?.cast<String, double>() ?? {},
+      injectPreference: fields[3] as bool? ?? false,
       preferenceKey: fields[4] as String?,
     );
   }
@@ -130,4 +180,5 @@ void registerHiveAdapters() {
     Hive.registerAdapter(ConversationEntryAdapter());
   }
   if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(PhraseEntryAdapter());
+  if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(ContactEntryAdapter());
 }

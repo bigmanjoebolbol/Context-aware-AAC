@@ -8,12 +8,13 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 class SttService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _available = false;
+  void Function(String error)? _errorCallback;
 
-  Future<bool> init() async {
+  Future<bool> init({void Function(String error)? onError}) async {
+    _errorCallback = onError;
     _available = await _speech.initialize(
       onError: (e) {
-        // Surface via onError callback passed to startListening instead
-        // of throwing, so the UI can show "didn't catch that, try again".
+        _errorCallback?.call(e.errorMsg);
       },
     );
     return _available;
@@ -29,10 +30,12 @@ class SttService {
   Future<void> startListening({
     required void Function(String text, bool isFinal) onResult,
     required void Function(String error) onError,
+    void Function(double level)? onSoundLevelChange,
     String localeId = 'ar-EG',
   }) async {
+    _errorCallback = onError;
     if (!_available) {
-      final ok = await init();
+      final ok = await init(onError: onError);
       if (!ok) {
         onError('Speech recognition not available on this device.');
         return;
@@ -40,16 +43,27 @@ class SttService {
     }
 
     await _speech.listen(
-      localeId: localeId,
       onResult: (result) {
         onResult(result.recognizedWords, result.finalResult);
       },
+      onSoundLevelChange: onSoundLevelChange,
+      listenFor: const Duration(minutes: 5),
+      pauseFor: const Duration(seconds: 30),
+      listenMode: stt.ListenMode.dictation,
       listenOptions: stt.SpeechListenOptions(
         partialResults: true,
         cancelOnError: true,
+        localeId: localeId,
+        onDevice: true,
       ),
     );
   }
 
   Future<void> stopListening() => _speech.stop();
+
+  /// Normalizes raw decibel levels (typically -2 to 10+) to a [0, 1] range
+  /// for UI components like volume bars or waveforms.
+  static double normalizeLevel(double level) {
+    return ((level + 2) / 12.0).clamp(0.0, 1.0);
+  }
 }

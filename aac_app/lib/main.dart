@@ -17,16 +17,27 @@ class ContextAwareAacApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profile = storage.getProfile();
-    final startScreen = (profile != null && profile.onboardingComplete)
-        ? ConversationScreen(storage: storage)
-        : OnboardingScreen(storage: storage);
+    return ListenableBuilder(
+      listenable: storage,
+      builder: (context, child) {
+        final profile = storage.getProfile();
+        final startScreen = (profile != null && profile.onboardingComplete)
+            ? ConversationScreen(storage: storage)
+            : OnboardingScreen(storage: storage);
 
-    return MaterialApp(
-      title: 'Context-Aware AAC',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      home: startScreen,
+        final theme = switch (profile?.themeMode) {
+          'dark' => AppTheme.dark(),
+          'highContrast' => AppTheme.highContrast(),
+          _ => AppTheme.light(),
+        };
+
+        return MaterialApp(
+          title: 'Context-Aware AAC',
+          debugShowCheckedModeBanner: false,
+          theme: theme,
+          home: startScreen,
+        );
+      },
     );
   }
 }

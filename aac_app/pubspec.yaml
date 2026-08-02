@@ -35,6 +35,13 @@ dependencies:
   # For phone-call style audio session handling (VoIP groundwork)
   permission_handler: ^11.3.1
 
+  # For location-aware context
+  geolocator: ^11.0.0
+  geocoding: ^3.0.0
+
+  # For device contacts integration
+  flutter_contacts: ^1.1.9+2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -9,11 +9,13 @@ class RuleEngineResult {
   final bool handled;
   final QuestionType type;
   final List<Suggestion> suggestions;
+  final PhraseEntry? matchedPhrase;
 
   RuleEngineResult({
     required this.handled,
     required this.type,
     required this.suggestions,
+    this.matchedPhrase,
   });
 }
 
@@ -77,12 +79,18 @@ class RuleEngine {
         handled: true,
         type: QuestionType.knownPhrase,
         suggestions: _rankedSuggestionsFromPhrase(phraseMatch, profile),
+        matchedPhrase: phraseMatch,
       );
     }
 
     // 3. Generic yes/no.
-    final looksYesNo = _yesNoStarters.any((s) => normalized.startsWith(s)) ||
-        normalized.endsWith('?') && normalized.split(' ').length <= 6;
+    final whStarters = ['how', 'what', 'why', 'who', 'where', 'when', 'إزاي', 'فين', 'ليه', 'مين', 'متى'];
+    final isWhQuestion = whStarters.any((s) => normalized.startsWith(s));
+
+    final looksYesNo = !isWhQuestion &&
+        (_yesNoStarters.any((s) => normalized.startsWith(s)) ||
+            (normalized.endsWith('?') && normalized.split(' ').length <= 6));
+
     if (looksYesNo) {
       return RuleEngineResult(
         handled: true,
