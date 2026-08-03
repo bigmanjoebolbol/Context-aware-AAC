@@ -3,7 +3,7 @@ import '../models/user_profile.dart';
 import '../services/storage_service.dart';
 import '../services/app_strings.dart';
 import '../services/local_ai_manager.dart';
-import 'conversation_screen.dart';
+import 'sessions_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final StorageService storage;
@@ -400,7 +400,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => ConversationScreen(storage: widget.storage),
+        builder: (_) => SessionsScreen(storage: widget.storage),
       ),
     );
   }

@@ -4,10 +4,10 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 
 class LocalAiManager {
-  // Using Qwen 2.5 0.5B Instruct GGUF as it's very small (~400MB)
+  // Using Qwen 2.5 1.5B Instruct GGUF (approx 1.1GB). Much smarter than 0.5B, excellent at Arabic.
   // Direct HuggingFace download link for a Q4_K_M quantized version
-  static const String modelUrl = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true';
-  static const String modelFileName = 'qwen2.5-0.5b-q4.gguf';
+  static const String modelUrl = 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf?download=true';
+  static const String modelFileName = 'qwen2.5-1.5b-q4.gguf';
 
   final Dio _dio = Dio();
 

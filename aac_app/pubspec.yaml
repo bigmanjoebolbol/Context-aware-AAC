@@ -44,7 +44,7 @@ dependencies:
   device_info_plus: ^13.2.0
   dio: ^5.11.0
   path_provider: ^2.1.6
-  llama_cpp_dart: ^0.2.2
+  fllama: ^0.0.1
 
 dev_dependencies:
   flutter_test:

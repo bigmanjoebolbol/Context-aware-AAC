@@ -293,8 +293,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
         await Future.delayed(const Duration(milliseconds: 1000));
         await _choose(_suggestions.first, auto: true);
       }
-    } catch (_) {
-      // getSuggestions handles its own errors
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Local AI Error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loadingLlm = false);
     }

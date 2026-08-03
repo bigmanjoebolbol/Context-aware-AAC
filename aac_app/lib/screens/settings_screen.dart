@@ -242,7 +242,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     const SizedBox(height: 16),
                                     Text(progress > 0 
                                       ? 'Downloading... ${(progress * 100).toStringAsFixed(1)}%'
-                                      : 'Starting download (~400MB)...'),
+                                      : 'Starting download (~1.1GB)...'),
                                   ],
                                 );
                               }
@@ -282,8 +282,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
 
                 RadioListTile(
-                  title: Text('📱  On-Device Local AI (Qwen2.5-0.5b)'),
-                  subtitle: Text('Truly offline. Requires good hardware & downloads ~400MB.'),
+                  title: Text('📱  On-Device Local AI (Qwen2.5-1.5b)'),
+                  subtitle: Text('Truly offline. Requires good hardware & downloads ~1.1GB.'),
                   value: 'local_on_device',
                 ),
               ],

@@ -1,29 +1,31 @@
 import 'dart:async';
-import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+import 'package:fllama/fllama.dart';
 import 'llm_fallback_service.dart';
 import '../models/user_profile.dart';
 import '../models/conversation_entry.dart';
 
 class OnDeviceLlmService {
-  LlamaParent? _llamaParent;
   bool _isInitialized = false;
+  double? _contextId;
+  bool _isBusy = false;
 
-  /// Initialize the local model in a background isolate. 
-  /// Call this before suggestReplies.
+  /// Initialize the local model using fllama in a native background thread.
   Future<void> initialize(String modelPath) async {
-    if (_isInitialized) return;
+    if (_isInitialized && _contextId != null) return;
     
-    _llamaParent = LlamaParent(
-      LlamaLoad(
-        path: modelPath,
-        modelParams: ModelParams()..nGpuLayers = 99, // Use GPU if available
-        contextParams: ContextParams()..nCtx = 2048,
-        samplingParams: SamplerParams(),
-      ),
+    // Fallback to nGpuLayers = 0 for highest compatibility on Android
+    final res = await Fllama.instance()?.initContext(
+      modelPath,
+      nCtx: 2048,
+      nGpuLayers: 0,
     );
-
-    await _llamaParent!.init();
-    _isInitialized = true;
+    
+    if (res != null && res["contextId"] != null) {
+      _contextId = (res["contextId"] as num).toDouble();
+      _isInitialized = true;
+    } else {
+      throw Exception('fllama failed to initialize context or load model.');
+    }
   }
 
   /// Generate replies entirely on-device
@@ -34,9 +36,16 @@ class OnDeviceLlmService {
     String? otherPersonName,
     String? sessionNotes,
   }) async {
-    if (!_isInitialized || _llamaParent == null) {
+    if (!_isInitialized || _contextId == null) {
       throw Exception('OnDeviceLlmService not initialized. Call initialize() first.');
     }
+
+    if (_isBusy) {
+      await Fllama.instance()?.stopCompletion(contextId: _contextId!);
+      // Wait slightly for native side to clean up
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+    _isBusy = true;
 
     final prefsStr = profile.preferences.entries.map((e) => '${e.key}: ${e.value}').join(', ');
     // History in chronological order (oldest→newest) so the model follows conversation flow
@@ -48,72 +57,88 @@ class OnDeviceLlmService {
     final langStr = profile.languagePreference;
     final nameStr = profile.name;
 
-    final systemPrompt = '''You help a nonverbal AAC user reply in a back-and-forth conversation.
-User Name: $nameStr
-${otherPersonName != null ? 'Talking TO: $otherPersonName (use their name naturally in some replies)' : ''}
-${sessionNotes != null && sessionNotes.isNotEmpty ? 'Notes about this person: $sessionNotes' : ''}
-Tone Preference: $toneStr
-Language Preference: $langStr
-User Preferences: $prefsStr
+    final systemPrompt = '''You are an AAC communication assistant for $nameStr.
+Language: $langStr
+Tone: $toneStr
+${otherPersonName != null ? 'Talking to: $otherPersonName' : ''}
 
-CONVERSATION SO FAR (oldest first, read carefully for context):
+Recent Conversation:
 $historyStr
 
-YOUR TASK: Give 3-5 reply options the user could plausibly want to say back.
-LENGTH RULES: Adapt the length to context.
-TONE RULES: Strictly enforce the requested tone.
-CONTEXT RULES: If the current message is a follow-up (e.g. "What are they?" after discussing hobbies), infer from history and use the user's saved preferences to answer.
-PERSONALIZATION RULES: Use the user's preferences if relevant.${otherPersonName != null ? ' Address $otherPersonName by name in some replies.' : ''}
-EGYPTIAN ARABIC RULES (CRITICAL): When language preference is 'egyptianArabic' or 'mixed', ALWAYS use colloquial Egyptian Arabic (عامية مصرية), NOT formal MSA.
-Use: أيوه/لأ/عايز/مش/كويس/إزيك/تمام/ماشي. Never use فصحى equivalents (نعم/لا/أريد/ليس/جيد/كيف حالك/حسناً).
-SCRIPT: Always use Arabic script. Never use Franco-Arabic/Latin for Arabic words.
-OUTPUT FORMAT: Format your options as a numbered list (1., 2., 3.). No other text.''';
+Suggest 3 short, natural replies for YOU ($nameStr) to say next to them. DO NOT continue the conversation as the other person.
+CRITICAL: You must output ONLY a numbered list, one reply per line (e.g. 1. Hello\n2. Yes). Do not include any other text, explanations, or chat.''';
 
     final formattedPrompt = '<|im_start|>system\n$systemPrompt<|im_end|>\n<|im_start|>user\n$otherPersonText<|im_end|>\n<|im_start|>assistant\n';
 
-    // Start generating
-    _llamaParent!.sendPrompt(formattedPrompt);
-    
-    final buffer = StringBuffer();
-    await for (final token in _llamaParent!.stream) {
-      buffer.write(token);
+    try {
+      // Start completion inference
+      final res = await Fllama.instance()?.completion(
+        _contextId!,
+        prompt: formattedPrompt,
+        emitRealtimeCompletion: false,
+        stop: ['<|im_end|>', '<|im_start|>', 'user\n'],
+        nPredict: 150,
+      );
+
+      final generatedText = res?["text"] as String? ?? "";
+
+      List<String> suggestions = _parseNumberedList(generatedText);
+      if (suggestions.isEmpty) {
+        suggestions.add(generatedText.trim().isNotEmpty ? generatedText.trim() : "Yes.");
+        suggestions.add("No.");
+        suggestions.add("I don't know.");
+      }
+
+      return SuggestResult(
+        suggestions: suggestions.take(5).toList(),
+        provider: 'local_on_device',
+        model: 'qwen2.5-1.5b-gguf',
+      );
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('Context is busy') || errStr.contains('cancel')) {
+        // Suppress expected cancellation errors
+        return SuggestResult(
+          suggestions: ["Thinking..."],
+          provider: 'local_on_device',
+          model: 'qwen2.5-1.5b-gguf',
+        );
+      }
+      rethrow;
+    } finally {
+      _isBusy = false;
     }
-
-    // Parse the numbered list output
-    final generatedText = buffer.toString().trim();
-    final suggestions = _parseNumberedList(generatedText);
-
-    // Fallback if the model failed to follow instructions
-    if (suggestions.isEmpty) {
-      suggestions.add(generatedText.isNotEmpty ? generatedText : "Yes.");
-      suggestions.add("No.");
-      suggestions.add("I don't know.");
-    }
-
-    return SuggestResult(
-      suggestions: suggestions.take(3).toList(),
-      provider: 'local_on_device',
-      model: 'qwen2.5-0.5b-gguf',
-    );
   }
 
   List<String> _parseNumberedList(String text) {
-    final lines = text.split('\n');
     final options = <String>[];
+    final lines = text.split('\n');
+    
     for (var line in lines) {
       line = line.trim();
       if (line.isNotEmpty && RegExp(r'^\d+[\.\)]').hasMatch(line)) {
-        // Remove the "1. " prefix
         options.add(line.replaceFirst(RegExp(r'^\d+[\.\)]\s*'), '').trim());
       }
     }
+
+    if (options.isEmpty) {
+      final matches = RegExp(r'\d+[\.\)]\s*([^\d]+)').allMatches(text);
+      for (final match in matches) {
+        final opt = match.group(1)?.trim();
+        if (opt != null && opt.isNotEmpty) {
+          options.add(opt);
+        }
+      }
+    }
+    
     return options;
   }
 
   void dispose() {
-    _llamaParent?.dispose();
+    if (_contextId != null) {
+      Fllama.instance()?.releaseContext(_contextId!);
+      _contextId = null;
+    }
     _isInitialized = false;
   }
 }
-
-
