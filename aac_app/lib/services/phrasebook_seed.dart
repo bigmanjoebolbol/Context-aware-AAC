@@ -17,12 +17,29 @@ List<PhraseEntry> defaultPhrasebook() {
         'تحب تاكل ايه',
       ],
       replyScores: {
-        'Whatever you\'re having / زي ما تحب': 1,
-        'Something light / حاجة خفيفة': 1,
-        'I\'m not hungry right now / مش جعان دلوقتي': 1,
+        'reply_eat_1': 1,
+        'reply_eat_2': 1,
+        'reply_eat_3': 1,
       },
       injectPreference: true,
       preferenceKey: 'protein',
+      replyTranslations: {
+        'reply_eat_1': {
+          'english': 'Whatever you\'re having',
+          'msa': 'كما تريد', // TODO: verify MSA
+          'egyptian': 'زي ما تحب',
+        },
+        'reply_eat_2': {
+          'english': 'Something light',
+          'msa': 'شيء خفيف',
+          'egyptian': 'حاجة خفيفة',
+        },
+        'reply_eat_3': {
+          'english': 'I\'m not hungry right now',
+          'msa': 'لست جائعاً الآن',
+          'egyptian': 'مش جعان دلوقتي',
+        },
+      },
     ),
     PhraseEntry(
       triggerKey: 'what_drink',
@@ -34,11 +51,23 @@ List<PhraseEntry> defaultPhrasebook() {
         'ماذا تريد أن تشرب',
       ],
       replyScores: {
-        'Water please / مية لو سمحت': 1,
-        'Whatever you\'re having / زي ما تحب': 1,
+        'reply_drink_1': 1,
+        'reply_drink_2': 1,
       },
       injectPreference: true,
       preferenceKey: 'drink',
+      replyTranslations: {
+        'reply_drink_1': {
+          'english': 'Water please',
+          'msa': 'ماء من فضلك',
+          'egyptian': 'مية لو سمحت',
+        },
+        'reply_drink_2': {
+          'english': 'Whatever you\'re having',
+          'msa': 'كما تريد',
+          'egyptian': 'زي ما تحب',
+        },
+      },
     ),
     PhraseEntry(
       triggerKey: 'how_are_you',
@@ -50,9 +79,26 @@ List<PhraseEntry> defaultPhrasebook() {
         'كيف حالك',
       ],
       replyScores: {
-        'I\'m good, thanks / كويس الحمد لله': 3,
-        'A bit tired today / تعبان شوية النهاردة': 1,
-        'Not great / مش تمام أوي': 1,
+        'reply_how_1': 3,
+        'reply_how_2': 1,
+        'reply_how_3': 1,
+      },
+      replyTranslations: {
+        'reply_how_1': {
+          'english': 'I\'m good, thanks',
+          'msa': 'أنا بخير، شكراً',
+          'egyptian': 'كويس الحمد لله',
+        },
+        'reply_how_2': {
+          'english': 'A bit tired today',
+          'msa': 'متعب قليلاً اليوم',
+          'egyptian': 'تعبان شوية النهاردة',
+        },
+        'reply_how_3': {
+          'english': 'Not great',
+          'msa': 'ليس جيداً',
+          'egyptian': 'مش تمام أوي',
+        },
       },
     ),
     PhraseEntry(
@@ -65,9 +111,26 @@ List<PhraseEntry> defaultPhrasebook() {
         'خلصت',
       ],
       replyScores: {
-        'Yes, ready / أيوة جاهز': 2,
-        'Give me a few minutes / اديني دقيقة': 1,
-        'Not yet / لسه لأ': 1,
+        'reply_ready_1': 2,
+        'reply_ready_2': 1,
+        'reply_ready_3': 1,
+      },
+      replyTranslations: {
+        'reply_ready_1': {
+          'english': 'Yes, ready',
+          'msa': 'نعم، جاهز',
+          'egyptian': 'أيوة جاهز',
+        },
+        'reply_ready_2': {
+          'english': 'Give me a few minutes',
+          'msa': 'أعطني بضع دقائق',
+          'egyptian': 'اديني دقيقة',
+        },
+        'reply_ready_3': {
+          'english': 'Not yet',
+          'msa': 'ليس بعد',
+          'egyptian': 'لسه لأ',
+        },
       },
     ),
     PhraseEntry(
@@ -79,9 +142,26 @@ List<PhraseEntry> defaultPhrasebook() {
         'الساعة كام',
       ],
       replyScores: {
-        'Whenever suits you / اي وقت يناسبك': 1,
-        'Morning is better / الصبح أحسن': 1,
-        'Evening is better / بالليل أحسن': 1,
+        'reply_time_1': 1,
+        'reply_time_2': 1,
+        'reply_time_3': 1,
+      },
+      replyTranslations: {
+        'reply_time_1': {
+          'english': 'Whenever suits you',
+          'msa': 'في أي وقت يناسبك',
+          'egyptian': 'اي وقت يناسبك',
+        },
+        'reply_time_2': {
+          'english': 'Morning is better',
+          'msa': 'الصباح أفضل',
+          'egyptian': 'الصبح أحسن',
+        },
+        'reply_time_3': {
+          'english': 'Evening is better',
+          'msa': 'المساء أفضل',
+          'egyptian': 'بالليل أحسن',
+        },
       },
     ),
     PhraseEntry(
@@ -93,8 +173,20 @@ List<PhraseEntry> defaultPhrasebook() {
         'عايز مساعدة',
       ],
       replyScores: {
-        'No, I\'m okay / لأ أنا تمام': 2,
-        'Yes please / أيوة لو سمحت': 1,
+        'reply_help_1': 2,
+        'reply_help_2': 1,
+      },
+      replyTranslations: {
+        'reply_help_1': {
+          'english': 'No, I\'m okay',
+          'msa': 'لا، أنا بخير',
+          'egyptian': 'لأ أنا تمام',
+        },
+        'reply_help_2': {
+          'english': 'Yes please',
+          'msa': 'نعم من فضلك',
+          'egyptian': 'أيوة لو سمحت',
+        },
       },
     ),
     PhraseEntry(
@@ -111,9 +203,27 @@ List<PhraseEntry> defaultPhrasebook() {
         'أهلاً وسهلاً',
       ],
       replyScores: {
-        'Hello! / أهلاً وسهلاً': 3,
-        'Hi there! / أهلاً بك': 2,
-        'Peace be upon you / وعليكم السلام': 2,
+        'reply_greeting_1': 3,
+        'reply_greeting_2': 2,
+        'reply_greeting_3': 2,
+      },
+      pinned: true,
+      replyTranslations: {
+        'reply_greeting_1': {
+          'english': 'Hello!',
+          'msa': 'مرحباً!',
+          'egyptian': 'أهلاً وسهلاً',
+        },
+        'reply_greeting_2': {
+          'english': 'Hi there!',
+          'msa': 'أهلاً بك',
+          'egyptian': 'أهلاً بك',
+        },
+        'reply_greeting_3': {
+          'english': 'Peace be upon you',
+          'msa': 'وعليكم السلام',
+          'egyptian': 'وعليكم السلام',
+        },
       },
     ),
     PhraseEntry(
@@ -126,8 +236,21 @@ List<PhraseEntry> defaultPhrasebook() {
         'صباح الفل',
       ],
       replyScores: {
-        'Good morning! / صباح النور': 3,
-        'Morning! / صباح الفل': 2,
+        'reply_morning_1': 3,
+        'reply_morning_2': 2,
+      },
+      pinned: true,
+      replyTranslations: {
+        'reply_morning_1': {
+          'english': 'Good morning!',
+          'msa': 'صباح الخير!',
+          'egyptian': 'صباح النور',
+        },
+        'reply_morning_2': {
+          'english': 'Morning!',
+          'msa': 'صباح الفل',
+          'egyptian': 'صباح الفل',
+        },
       },
     ),
     PhraseEntry(
@@ -140,8 +263,21 @@ List<PhraseEntry> defaultPhrasebook() {
         'مساء الفل',
       ],
       replyScores: {
-        'Good evening! / مساء النور': 3,
-        'Evening! / مساء الفل': 2,
+        'reply_evening_1': 3,
+        'reply_evening_2': 2,
+      },
+      pinned: true,
+      replyTranslations: {
+        'reply_evening_1': {
+          'english': 'Good evening!',
+          'msa': 'مساء الخير!',
+          'egyptian': 'مساء النور',
+        },
+        'reply_evening_2': {
+          'english': 'Evening!',
+          'msa': 'مساء الفل',
+          'egyptian': 'مساء الفل',
+        },
       },
     ),
     PhraseEntry(
@@ -155,8 +291,21 @@ List<PhraseEntry> defaultPhrasebook() {
         'شكرا جزيلا',
       ],
       replyScores: {
-        'You\'re welcome! / العفو': 3,
-        'Anytime! / حبيبي تسلم': 2,
+        'reply_thanks_1': 3,
+        'reply_thanks_2': 2,
+      },
+      pinned: true,
+      replyTranslations: {
+        'reply_thanks_1': {
+          'english': 'You\'re welcome!',
+          'msa': 'العفو!',
+          'egyptian': 'العفو',
+        },
+        'reply_thanks_2': {
+          'english': 'Anytime!',
+          'msa': 'في أي وقت!',
+          'egyptian': 'حبيبي تسلم',
+        },
       },
     ),
   ];
