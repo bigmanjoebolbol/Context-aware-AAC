@@ -157,13 +157,16 @@ class PhraseEntryAdapter extends TypeAdapter<PhraseEntry> {
       replyScores: (fields[2] as Map?)?.cast<String, double>() ?? {},
       injectPreference: fields[3] as bool? ?? false,
       preferenceKey: fields[4] as String?,
+      pinned: fields[5] as bool? ?? false,
+      replyTranslations:
+          (fields[6] as Map?)?.cast<String, Map<String, String>>() ?? {},
     );
   }
 
   @override
   void write(BinaryWriter writer, PhraseEntry obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.triggerKey)
       ..writeByte(1)
@@ -173,7 +176,11 @@ class PhraseEntryAdapter extends TypeAdapter<PhraseEntry> {
       ..writeByte(3)
       ..write(obj.injectPreference)
       ..writeByte(4)
-      ..write(obj.preferenceKey);
+      ..write(obj.preferenceKey)
+      ..writeByte(5)
+      ..write(obj.pinned)
+      ..writeByte(6)
+      ..write(obj.replyTranslations);
   }
 }
 
