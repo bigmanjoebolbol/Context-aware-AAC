@@ -50,8 +50,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final ValueNotifier<double> _soundLevelNotifier = ValueNotifier(-2.0);
   Timer? _debounceTimer;
   Timer? _inputDebounce;
+  Timer? _replyDebounce;
 
-  
+  // Map suggestion text → reply key (for phrasebook replies)
+  final Map<String, String> _replyKeyMap = {};
+
+  // Autocomplete suggestions for custom reply field
+  List<String> _autocompleteSuggestions = [];
+
   List<ConversationEntry> _history = [];
   final ScrollController _scrollController = ScrollController();
 
@@ -111,6 +117,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     _profile = widget.storage.getProfile()!;
     _llm = LlmFallbackService();
     _inputController.addListener(_onInputChanged);
+    _replyController.addListener(_onReplyChanged);
     _initLocation();
     // Load persisted history immediately so the chat is visible on open
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadHistory());
@@ -130,15 +137,30 @@ class _ConversationScreenState extends State<ConversationScreen> {
     });
   }
 
+  void _onReplyChanged() {
+    _replyDebounce?.cancel();
+    _replyDebounce = Timer(const Duration(milliseconds: 150), () {
+      final partial = _replyController.text.trim();
+      if (partial.isEmpty) {
+        setState(() => _autocompleteSuggestions = []);
+        return;
+      }
+      final suggestions = widget.storage.autocompleteSuggestions(partial, limit: 3);
+      setState(() => _autocompleteSuggestions = suggestions);
+    });
+  }
+
   @override
   void dispose() {
     _manuallyStopped = true;
     _stt.stopListening();
     _inputController.removeListener(_onInputChanged);
+    _replyController.removeListener(_onReplyChanged);
     _inputController.dispose();
     _replyController.dispose();
     _debounceTimer?.cancel();
     _inputDebounce?.cancel();
+    _replyDebounce?.cancel();
     _soundLevelNotifier.dispose();
     super.dispose();
   }
@@ -146,23 +168,19 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _process(String text, {bool isRealTime = false}) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
-      // Don't clear suggestions immediately on empty text,
-      // just clear the "Other person said" display if not real-time.
       if (!isRealTime) {
         setState(() => _heardText = '');
       }
       return;
     }
 
-    // Always clear the debounce timer when new text arrives
     _debounceTimer?.cancel();
 
-    // Clear previous suggestions when the question changes
-    // so the user always sees suggestions relevant to the CURRENT question.
     if (trimmed != _heardText) {
       setState(() {
         _suggestions = [];
         _modelName = null;
+        _replyKeyMap.clear();
       });
     }
 
@@ -181,6 +199,24 @@ class _ConversationScreenState extends State<ConversationScreen> {
         _matchedPhrase = result.matchedPhrase;
         _modelName = null;
         _loadingLlm = false;
+        // Build reply key map for phrasebook suggestions
+        if (_matchedPhrase != null) {
+          _replyKeyMap.clear();
+          for (final key in _matchedPhrase!.replyScores.keys) {
+            // Find the suggestion that matches the English translation (or the first available)
+            final english = _matchedPhrase!.replyTranslations[key]?['english'] ?? key;
+            // Also try to match the Egyptian or MSA if English missing
+            final displayText = _matchedPhrase!.replyTranslations[key]?['english'] ??
+                _matchedPhrase!.replyTranslations[key]?['egyptian'] ??
+                _matchedPhrase!.replyTranslations[key]?['msa'] ??
+                key;
+            _replyKeyMap[displayText] = key;
+            // Also map the English version if it's different
+            if (english != displayText) {
+              _replyKeyMap[english] = key;
+            }
+          }
+        }
       });
 
       if (!isRealTime && _profile.autoReplyEnabled && _suggestions.isNotEmpty) {
@@ -189,10 +225,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
         return;
       }
 
-      // Even when phrasebook handles it, also fetch AI suggestions in parallel
-      // so the user gets richer options alongside the quick answers.
       if (!isRealTime) {
-        _fetchLlmSuggestions(trimmed); // fire-and-forget (merges into _suggestions)
+        _fetchLlmSuggestions(trimmed);
       } else {
         _debounceTimer = Timer(const Duration(milliseconds: 800), () {
           _fetchLlmSuggestions(trimmed);
@@ -201,15 +235,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return;
     }
 
-    // Fast path couldn't handle it - plan to fall back to the LLM.
     setState(() {
       _heardText = text;
       _lastType = QuestionType.openEnded;
       _matchedPhrase = null;
+      _replyKeyMap.clear();
     });
 
     if (isRealTime) {
-      // Debounce LLM calls to avoid flickering and excessive API usage
       _debounceTimer = Timer(const Duration(milliseconds: 800), () {
         _fetchLlmSuggestions(text);
       });
@@ -243,7 +276,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
             sessionNotes: widget.session?.notes,
           );
         } else {
-          // Fallback if not downloaded (e.g., bypassed onboarding somehow)
           llmResult = await _llm.getSuggestions(
             otherPersonText: text,
             profile: _profile,
@@ -280,7 +312,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
       setState(() {
         _modelName = llmResult.model;
-        // Merge AI suggestions with any existing phrasebook suggestions
         final existing = _suggestions.map((s) => s.text.toLowerCase()).toSet();
         final newSuggestions = llmResult.suggestions
             .where((r) => !existing.contains(r.toLowerCase()))
@@ -308,7 +339,59 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
-  Future<void> _choose(Suggestion suggestion, {bool auto = false}) async {
+  // ----------------------------------------------------------------------
+  // _choose: now uses translation lookup when a PhraseEntry is available.
+  // ----------------------------------------------------------------------
+  Future<void> _choose(Suggestion suggestion, {bool auto = false, String? heardTextOverride}) async {
+    final heardText = heardTextOverride ?? _heardText;
+
+    // If we have a matched phrase and this suggestion is from phrasebook, use translations.
+    if (_matchedPhrase != null && suggestion.source == SuggestionSource.phrasebook) {
+      // Find the reply key for this suggestion text.
+      String? replyKey = _replyKeyMap[suggestion.text];
+      // Fallback: try to match by checking translations directly.
+      if (replyKey == null) {
+        for (final entry in _matchedPhrase!.replyTranslations.entries) {
+          if (entry.value.values.contains(suggestion.text)) {
+            replyKey = entry.key;
+            break;
+          }
+        }
+      }
+      if (replyKey != null) {
+        await _tts.speakTranslated(
+          _matchedPhrase!,
+          replyKey,
+          languagePreference: _profile.languagePreference,
+          ttsGender: _profile.preferences['tts_gender'] ?? 'female',
+        );
+        // Log with the English translation (or fallback).
+        final displayText = _matchedPhrase!.replyTranslations[replyKey]?['english'] ?? suggestion.text;
+        await widget.storage.logEntry(ConversationEntry(
+          otherPersonText: heardText,
+          chosenReply: displayText,
+          questionType: (_lastType ?? QuestionType.openEnded).name,
+          wasAutoReplied: auto,
+          sessionId: widget.session?.id,
+        ));
+        // Reinforce the choice.
+        await widget.storage.reinforcePhraseChoice(_matchedPhrase!, replyKey);
+        // Clear and return.
+        setState(() {
+          _heardText = '';
+          _suggestions = [];
+          _modelName = null;
+          _replyKeyMap.clear();
+        });
+        _loadHistory();
+        _inputController.clear();
+        _replyController.clear();
+        if (!auto) await Future.delayed(const Duration(milliseconds: 1000));
+        return;
+      }
+    }
+
+    // Fallback: use the old plain‑text speak method (for LLM/custom replies).
     await _tts.speak(
       suggestion.text,
       languagePreference: _profile.languagePreference,
@@ -316,7 +399,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     );
 
     await widget.storage.logEntry(ConversationEntry(
-      otherPersonText: _heardText,
+      otherPersonText: heardText,
       chosenReply: suggestion.text,
       questionType: (_lastType ?? QuestionType.openEnded).name,
       wasAutoReplied: auto,
@@ -324,9 +407,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
     ));
 
     if (_matchedPhrase != null) {
+      // This shouldn't happen if we handled above, but keep for safety.
       await widget.storage.reinforcePhraseChoice(_matchedPhrase!, suggestion.text);
     } else if (suggestion.source == SuggestionSource.llm && _modelName != 'Offline Fallback') {
-      final key = _heardText
+      final key = heardText
           .toLowerCase()
           .split(' ')
           .take(3)
@@ -335,42 +419,91 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (key.isNotEmpty) {
         await widget.storage.learnNewPhrase(
           triggerKey: key,
-          variants: [_heardText],
+          variants: [heardText],
           chosenReply: suggestion.text,
         );
       }
-    } else if (suggestion.source == SuggestionSource.custom && _heardText.isNotEmpty) {
-      // User typed a custom reply to the heard text. Save this as a learned fact.
+    } else if (suggestion.source == SuggestionSource.custom && heardText.isNotEmpty) {
       final currentFacts = _profile.preferences['learned_facts'] ?? '';
-      final newFact = "When asked '$_heardText', user replied: '${suggestion.text}'";
+      final newFact = "When asked '$heardText', user replied: '${suggestion.text}'";
       final factsList = currentFacts.isNotEmpty ? currentFacts.split('\n') : <String>[];
       factsList.add('- $newFact');
-      
-      // Keep only the last 15 custom facts to prevent infinite growth
       if (factsList.length > 15) {
         factsList.removeRange(0, factsList.length - 15);
       }
-      
       _profile.preferences['learned_facts'] = factsList.join('\n');
       await widget.storage.saveProfile(_profile);
     }
 
-    // Clear the pending state — the exchange is now saved to history
-    // and will appear as a proper chat bubble pair via _loadHistory().
     setState(() {
       _heardText = '';
       _suggestions = [];
       _modelName = null;
+      _replyKeyMap.clear();
     });
     _loadHistory();
     _inputController.clear();
     _replyController.clear();
 
     if (!auto) {
-      // Small pause to allow TTS to start without mic picking up self-voice
       await Future.delayed(const Duration(milliseconds: 1000));
     }
   }
+
+  // ----------------------------------------------------------------------
+  // Pinned replies – also use translation lookup.
+  // ----------------------------------------------------------------------
+  String _getTopReplyKey(PhraseEntry entry) {
+    if (entry.replyScores.isEmpty) return '';
+    return entry.replyScores.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+  }
+
+  String _getDisplayText(PhraseEntry entry, String replyKey) {
+    // Prefer English for display (we can later localize the chip text).
+    return entry.replyTranslations[replyKey]?['english'] ??
+        entry.replyTranslations[replyKey]?['egyptian'] ??
+        entry.replyTranslations[replyKey]?['msa'] ??
+        replyKey;
+  }
+
+  Future<void> _sendPinnedReply(PhraseEntry entry) async {
+    final topKey = _getTopReplyKey(entry);
+    if (topKey.isEmpty) return;
+
+    // Speak using translation.
+    await _tts.speakTranslated(
+      entry,
+      topKey,
+      languagePreference: _profile.languagePreference,
+      ttsGender: _profile.preferences['tts_gender'] ?? 'female',
+    );
+
+    final displayText = _getDisplayText(entry, topKey);
+
+    await widget.storage.logEntry(ConversationEntry(
+      otherPersonText: '',
+      chosenReply: displayText,
+      questionType: 'pinned',
+      wasAutoReplied: false,
+      sessionId: widget.session?.id,
+    ));
+
+    await widget.storage.reinforcePhraseChoice(entry, topKey);
+
+    _loadHistory();
+    setState(() {
+      _heardText = '';
+      _suggestions = [];
+      _modelName = null;
+      _replyKeyMap.clear();
+    });
+    _inputController.clear();
+    _replyController.clear();
+  }
+
+  // ----------------------------------------------------------------------
+  // (Rest of the file unchanged – build, helpers, etc.)
+  // ----------------------------------------------------------------------
 
   Widget _buildChatBubble(String text, {required bool isOtherPerson, void Function()? onEdit}) {
     final theme = Theme.of(context);
@@ -421,7 +554,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
     _manuallyStopped = false;
 
-    // Check permissions explicitly
     final status = await Permission.microphone.request();
     if (status != PermissionStatus.granted) {
       if (!mounted) return;
@@ -472,7 +604,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
             _soundLevelNotifier.value = -2.0;
           }
           if (!_manuallyStopped) {
-            // Delay restart slightly for stability
             Future.delayed(const Duration(milliseconds: 600), () {
               if (!_manuallyStopped && mounted) _startListeningLoop();
             });
@@ -498,6 +629,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   Widget build(BuildContext context) {
     final lang = _profile.uiLanguage;
+    final pinnedEntries = widget.storage.pinnedPhrases();
 
     return Scaffold(
       appBar: AppBar(
@@ -591,7 +723,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   ],
                 ),
               ),
-                        Expanded(
+            Expanded(
               child: Column(
                 children: [
                   if (_profile.autoReplyEnabled) _AutoReplyBanner(uiLanguage: lang),
@@ -600,8 +732,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     child: ListView.builder(
                       controller: _scrollController,
                       padding: const EdgeInsets.all(16),
-                      // Show heard text as a pending bubble ALWAYS while non-empty,
-                      // even when suggestions are showing — it stays until the user replies.
                       itemCount: _history.length + (_heardText.isNotEmpty ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index < _history.length) {
@@ -616,7 +746,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             ],
                           );
                         } else {
-                          // Unanswered heard text
                           return _buildChatBubble(_heardText, isOtherPerson: true, onEdit: null);
                         }
                       },
@@ -630,7 +759,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       child: Column(
                         children: [
                           if (_listening) ...([
-                            // Live STT preview
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 200),
                               child: _inputController.text.isNotEmpty
@@ -679,7 +807,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                   : const SizedBox.shrink(
                                       key: ValueKey('stt_empty')),
                             ),
-                            // Waveform
                             SizedBox(
                               height: 60,
                               child: Center(
@@ -707,6 +834,31 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       ),
                     ),
 
+                  // PINNED QUICK PHRASES BAR
+                  if (pinnedEntries.isNotEmpty)
+                    Container(
+                      height: 50,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: pinnedEntries.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final entry = pinnedEntries[index];
+                          final topKey = _getTopReplyKey(entry);
+                          if (topKey.isEmpty) return const SizedBox.shrink();
+                          final display = _getDisplayText(entry, topKey);
+                          return ActionChip(
+                            label: Text(display, style: const TextStyle(fontSize: 14)),
+                            onPressed: () => _sendPinnedReply(entry),
+                            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                            side: BorderSide(color: Theme.of(context).colorScheme.secondary, width: 1),
+                            avatar: const Icon(Icons.push_pin, size: 16),
+                          );
+                        },
+                      ),
+                    ),
+
                   // Suggestions
                   if (_suggestions.isNotEmpty)
                     Container(
@@ -714,65 +866,120 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: ListView(
                         scrollDirection: Axis.horizontal,
-                        children: _suggestions.map((s) => Padding(
-                          padding: const EdgeInsets.only(right: 8, bottom: 8),
-                          child: InkWell(
-                            onTap: () => _choose(s),
-                            child: Container(
-                              width: 220,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        children: _suggestions.map((s) {
+                          final isPinned = _matchedPhrase?.pinned == true && s.source == SuggestionSource.phrasebook;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8, bottom: 8),
+                            child: GestureDetector(
+                              onTap: () => _choose(s),
+                              onLongPress: () async {
+                                if (_matchedPhrase != null && s.source == SuggestionSource.phrasebook) {
+                                  await widget.storage.togglePinned(_matchedPhrase!);
+                                  setState(() {});
+                                }
+                              },
+                              child: Stack(
                                 children: [
-                                  Expanded(child: Text(s.text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
-                                  Text(_sourceLabel(s.source, lang), style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.primary)),
+                                  Container(
+                                    width: 220,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.primaryContainer,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(child: Text(s.text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
+                                        Text(_sourceLabel(s.source, lang), style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.primary)),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isPinned)
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: Icon(Icons.push_pin, size: 16, color: Theme.of(context).colorScheme.primary),
+                                    ),
                                 ],
                               ),
                             ),
-                          ),
-                        )).toList(),
+                          );
+                        }).toList(),
                       ),
                     ),
 
-                  // Input row
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Row(
-                      children: [
-                        IconButton.filled(
-                          icon: Icon(_listening ? Icons.stop : Icons.mic),
-                          onPressed: _toggleListening,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: _replyController,
-                            decoration: InputDecoration(
-                              hintText: AppStrings.get('my_reply_hint', lang),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            ),
-                            onSubmitted: (v) {
-                              if (v.trim().isNotEmpty) _choose(Suggestion(text: v.trim(), source: SuggestionSource.custom));
-                            },
+                  // Input row with autocomplete chips below
+                  Column(
+                    children: [
+                      // Autocomplete chips (if any)
+                      if (_autocompleteSuggestions.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: _autocompleteSuggestions.map((text) {
+                              return ActionChip(
+                                label: Text(text, style: const TextStyle(fontSize: 13)),
+                                onPressed: () {
+                                  setState(() {
+                                    _replyController.text = text;
+                                    _replyController.selection = TextSelection.fromPosition(
+                                      TextPosition(offset: text.length),
+                                    );
+                                    _autocompleteSuggestions.clear();
+                                  });
+                                },
+                                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                              );
+                            }).toList(),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton.filled(
-                          icon: const Icon(Icons.send),
-                          onPressed: () {
-                            if (_replyController.text.trim().isNotEmpty) {
-                              _choose(Suggestion(text: _replyController.text.trim(), source: SuggestionSource.custom));
-                            }
-                          },
+                      // Main input row
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          children: [
+                            IconButton.filled(
+                              icon: Icon(_listening ? Icons.stop : Icons.mic),
+                              onPressed: _toggleListening,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _replyController,
+                                decoration: InputDecoration(
+                                  hintText: AppStrings.get('my_reply_hint', lang),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                ),
+                                onSubmitted: (v) {
+                                  if (v.trim().isNotEmpty) {
+                                    _choose(Suggestion(text: v.trim(), source: SuggestionSource.custom));
+                                    setState(() => _autocompleteSuggestions = []);
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton.filled(
+                              icon: const Icon(Icons.send),
+                              onPressed: () {
+                                if (_replyController.text.trim().isNotEmpty) {
+                                  _choose(Suggestion(text: _replyController.text.trim(), source: SuggestionSource.custom));
+                                  setState(() => _autocompleteSuggestions = []);
+                                }
+                              },
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -896,7 +1103,7 @@ class _WaveformIndicator extends StatelessWidget {
       width: double.infinity,
       child: CustomPaint(
         painter: _WaveformPainter(
-          level: listening ? level : -2.0, // Show a flat line when not listening
+          level: listening ? level : -2.0,
           color: listening 
               ? Theme.of(context).colorScheme.primary 
               : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
@@ -922,21 +1129,14 @@ class _WaveformPainter extends CustomPainter {
     final spacing = size.width / barCount;
     final centerY = size.height / 2;
 
-    // Use standardized normalization
     final normalized = SttService.normalizeLevel(level);
 
     for (int i = 0; i < barCount; i++) {
       final x = i * spacing + (spacing / 2);
-      
-      // Fixed pattern for symmetry
       final distFromCenter = (i - (barCount / 2)).abs() / (barCount / 2);
       final scale = 1.0 - distFromCenter;
-      
-      // Jitter based on index to look "live"
       final wave = 0.4 + (0.6 * (0.5 + 0.5 * (i % 5 == 0 ? 1 : (i % 3 == 0 ? 0.7 : 0.5))));
-      
       final height = size.height * normalized * scale * wave;
-      
       canvas.drawLine(
         Offset(x, centerY - height / 2),
         Offset(x, centerY + height / 2),
