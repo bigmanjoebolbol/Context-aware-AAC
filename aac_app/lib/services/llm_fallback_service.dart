@@ -92,6 +92,9 @@ class LlmFallbackService {
     return "You help a nonverbal AAC user reply in a back-and-forth conversation. You receive what "
         "the other person just said, the user's name, the other person's name and notes (if known), their language/tone preferences, their saved facts/preferences, and "
         "the full recent conversation history in chronological order.\n\n"
+        "IMPORTANT: The user message will contain a 'personalization' field at the very start. "
+        "This field is a plain sentence summarizing the user's name and their most relevant preferences. "
+        "READ THIS FIELD FIRST and use it to tailor every reply appropriately.\n\n"
         "YOUR TASK: Give 3-5 reply options the user could plausibly want to say back.\n"
         "LENGTH RULES: Adapt the length of your replies to the context. If it's a simple greeting, keep it short. If they ask a complex question, provide a detailed, natural-sounding sentence or two. Do not limit yourself to 10 words if the context demands more.\n\n"
         "TONE RULES: You MUST strictly enforce the requested tone.\n"
@@ -140,6 +143,24 @@ class LlmFallbackService {
       'mixed': 'mix',
     };
 
+    // Build a plain‑language personalization sentence.
+    final prefStrings = <String>[];
+    // Include only non‑empty preferences
+    preferences.forEach((key, value) {
+      if (value.trim().isNotEmpty) {
+        // Convert camelCase or underscore keys to readable labels.
+        final label = key
+            .replaceAll('_', ' ')
+            .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}');
+        prefStrings.add('$label: $value');
+      }
+    });
+    final prefSummary = prefStrings.isEmpty
+        ? 'no specific preferences saved'
+        : prefStrings.join('; ');
+
+    final personalization = 'You are helping $userName. $userName\'s preferences: $prefSummary.';
+
     // History in chronological order (oldest first) so the AI reads conversation flow correctly.
     // This is critical for understanding follow-up questions ("What are they?" after "Do you have hobbies?").
     final chronologicalHistory = history.reversed.toList();
@@ -155,7 +176,9 @@ class LlmFallbackService {
             })
         .toList();
 
+    // Build the JSON payload with 'personalization' as the first field.
     final compact = {
+      'personalization': personalization, // placed first
       'user_name': userName,
       'msg': otherPersonText.length > 500
           ? otherPersonText.substring(0, 500)
