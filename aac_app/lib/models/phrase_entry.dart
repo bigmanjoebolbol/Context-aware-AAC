@@ -15,7 +15,8 @@ class PhraseEntry extends HiveObject {
   @HiveField(1)
   List<String> variants;
 
-  /// reply text -> score. Higher score = shown first.
+  /// reply key -> score. The key is a stable identifier (e.g. "reply_1")
+  /// that maps to a translation object in [replyTranslations].
   @HiveField(2)
   Map<String, double> replyScores;
 
@@ -29,11 +30,25 @@ class PhraseEntry extends HiveObject {
   @HiveField(4)
   String? preferenceKey;
 
+  /// If true, this phrase entry appears as a pinned quick phrase chip
+  /// in the conversation screen, usable without waiting for a question.
+  @HiveField(5)
+  bool pinned;
+
+  /// Maps a reply key (same as in replyScores) to its translations:
+  /// {'english': '...', 'msa': '...', 'egyptian': '...'}.
+  /// At least one of these must be non‑empty.
+  @HiveField(6)
+  Map<String, Map<String, String>> replyTranslations;
+
   PhraseEntry({
     required this.triggerKey,
     required this.variants,
     Map<String, double>? replyScores,
     this.injectPreference = false,
     this.preferenceKey,
-  }) : replyScores = replyScores ?? {};
+    this.pinned = false,
+    Map<String, Map<String, String>>? replyTranslations,
+  })  : replyScores = replyScores ?? {},
+        replyTranslations = replyTranslations ?? {};
 }
