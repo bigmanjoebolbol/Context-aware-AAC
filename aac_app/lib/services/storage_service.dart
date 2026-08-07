@@ -31,6 +31,35 @@ class StorageService extends ChangeNotifier {
       for (final entry in defaultPhrasebook()) {
         await _phrasebookBox.add(entry);
       }
+    } else {
+      // Migration for existing installs: ensure seed entries are pinned.
+      await _ensurePinnedEntries();
+    }
+  }
+
+  /// Migration: if there are no pinned entries yet, pin the standard greetings
+  /// and thank‑you entries by their triggerKey.
+  Future<void> _ensurePinnedEntries() async {
+    // Check if any pinned entry already exists
+    final hasPinned = _phrasebookBox.values.any((e) => e.pinned);
+    if (hasPinned) return; // already migrated
+
+    // List of triggerKeys we want to pin
+    const keysToPin = [
+      'greetings_general',
+      'good_morning',
+      'good_evening',
+      'thank_you',
+    ];
+
+    for (final key in keysToPin) {
+      final entries = _phrasebookBox.values
+          .where((e) => e.triggerKey == key)
+          .toList();
+      for (final entry in entries) {
+        entry.pinned = true;
+        await entry.save();
+      }
     }
   }
 
@@ -81,6 +110,86 @@ class StorageService extends ChangeNotifier {
       replyScores: {chosenReply: 1},
     );
     await addPhraseEntry(entry);
+  }
+
+  /// Returns all phrase entries marked as pinned.
+  List<PhraseEntry> pinnedPhrases() {
+    return _phrasebookBox.values.where((e) => e.pinned).toList();
+  }
+
+  /// Toggles the pinned status of the given entry and saves it.
+  Future<void> togglePinned(PhraseEntry entry) async {
+    entry.pinned = !entry.pinned;
+    await entry.save();
+    notifyListeners();
+  }
+
+  // ---------- Autocomplete ----------
+
+  /// Returns up to [limit] autocomplete suggestions for [partial] input,
+  /// drawing from recent chat history and the phrasebook.
+  /// Results are case‑insensitive, ordered by combined frequency/score.
+  List<String> autocompleteSuggestions(String partial, {int limit = 3}) {
+    if (partial.isEmpty) return [];
+
+    final lowerPartial = partial.toLowerCase();
+
+    // 1. Collect history replies (last 200 entries)
+    final historyEntries = recentHistory(limit: 200);
+    final historyCounts = <String, int>{};
+    for (final entry in historyEntries) {
+      final text = entry.chosenReply;
+      if (text != null && text.isNotEmpty) {
+        historyCounts[text] = (historyCounts[text] ?? 0) + 1;
+      }
+    }
+
+    // 2. Collect phrasebook replies (all entries, all translations)
+    final phraseScores = <String, double>{};
+    for (final entry in _phrasebookBox.values) {
+      for (final key in entry.replyScores.keys) {
+        final translations = entry.replyTranslations[key];
+        if (translations == null) continue;
+        // Use display text: prefer English, then Egyptian, then MSA.
+        final display = translations['english']?.trim() ??
+            translations['egyptian']?.trim() ??
+            translations['msa']?.trim() ??
+            key;
+        if (display.isEmpty) continue;
+        final score = entry.replyScores[key] ?? 1.0;
+        phraseScores[display] = (phraseScores[display] ?? 0) + score;
+      }
+    }
+
+    // 3. Combine: for each unique text, sum history count and phrase score.
+    final allTexts = <String>{};
+    allTexts.addAll(historyCounts.keys);
+    allTexts.addAll(phraseScores.keys);
+
+    final scored = <String, double>{};
+    for (final text in allTexts) {
+      final historyWeight = (historyCounts[text] ?? 0) * 2.0; // history counts more
+      final phraseWeight = phraseScores[text] ?? 0.0;
+      final total = historyWeight + phraseWeight;
+      if (total > 0) scored[text] = total;
+    }
+
+    // 4. Filter by prefix (case‑insensitive) and exclude exact match.
+    final matches = scored.keys
+        .where((text) =>
+            text.toLowerCase().startsWith(lowerPartial) &&
+            text.toLowerCase() != lowerPartial)
+        .toList();
+
+    // 5. Sort by score descending, then alphabetically.
+    matches.sort((a, b) {
+      final scoreA = scored[a] ?? 0;
+      final scoreB = scored[b] ?? 0;
+      if (scoreA != scoreB) return scoreB.compareTo(scoreA); // higher first
+      return a.compareTo(b);
+    });
+
+    return matches.take(limit).toList();
   }
 
   // ---------- Conversation Sessions ----------
@@ -154,6 +263,3 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 }
-
-
-
