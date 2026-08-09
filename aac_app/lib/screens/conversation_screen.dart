@@ -51,6 +51,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Timer? _debounceTimer;
   Timer? _inputDebounce;
   Timer? _replyDebounce;
+  bool _suppressInputListener = false; // prevents double-process when STT writes to _inputController
+  String _lastProcessedText = ''; // guard against processing the same text twice
 
   // Map suggestion text → reply key (for phrasebook replies)
   final Map<String, String> _replyKeyMap = {};
@@ -131,6 +133,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   void _onInputChanged() {
+    if (_suppressInputListener) return; // STT is writing — skip to avoid double-process
     _inputDebounce?.cancel();
     _inputDebounce = Timer(const Duration(milliseconds: 150), () {
       _process(_inputController.text, isRealTime: true);
@@ -199,21 +202,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
         _matchedPhrase = result.matchedPhrase;
         _modelName = null;
         _loadingLlm = false;
-        // Build reply key map for phrasebook suggestions
+        // Build reply key map from embedded replyKey on each suggestion.
+        // This is reliable because the rule engine now stores the stable key.
         if (_matchedPhrase != null) {
           _replyKeyMap.clear();
-          for (final key in _matchedPhrase!.replyScores.keys) {
-            // Find the suggestion that matches the English translation (or the first available)
-            final english = _matchedPhrase!.replyTranslations[key]?['english'] ?? key;
-            // Also try to match the Egyptian or MSA if English missing
-            final displayText = _matchedPhrase!.replyTranslations[key]?['english'] ??
-                _matchedPhrase!.replyTranslations[key]?['egyptian'] ??
-                _matchedPhrase!.replyTranslations[key]?['msa'] ??
-                key;
-            _replyKeyMap[displayText] = key;
-            // Also map the English version if it's different
-            if (english != displayText) {
-              _replyKeyMap[english] = key;
+          for (final s in result.suggestions) {
+            if (s.replyKey != null) {
+              _replyKeyMap[s.text] = s.replyKey!;
             }
           }
         }
@@ -347,9 +342,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
     // If we have a matched phrase and this suggestion is from phrasebook, use translations.
     if (_matchedPhrase != null && suggestion.source == SuggestionSource.phrasebook) {
-      // Find the reply key for this suggestion text.
-      String? replyKey = _replyKeyMap[suggestion.text];
-      // Fallback: try to match by checking translations directly.
+      // Prefer the replyKey embedded on the suggestion by the rule engine;
+      // fall back to the text-based map for legacy/custom entries.
+      String? replyKey = suggestion.replyKey ?? _replyKeyMap[suggestion.text];
+      // Last resort: scan all translations for any matching value.
       if (replyKey == null) {
         for (final entry in _matchedPhrase!.replyTranslations.entries) {
           if (entry.value.values.contains(suggestion.text)) {
@@ -365,8 +361,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
           languagePreference: _profile.languagePreference,
           ttsGender: _profile.preferences['tts_gender'] ?? 'female',
         );
-        // Log with the English translation (or fallback).
-        final displayText = _matchedPhrase!.replyTranslations[replyKey]?['english'] ?? suggestion.text;
+        // Log with the language-appropriate translation text.
+        final displayText = _getDisplayText(_matchedPhrase!, replyKey, _heardText);
         await widget.storage.logEntry(ConversationEntry(
           otherPersonText: heardText,
           chosenReply: displayText,
@@ -383,6 +379,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           _modelName = null;
           _replyKeyMap.clear();
         });
+        _lastProcessedText = '';
         _loadHistory();
         _inputController.clear();
         _replyController.clear();
@@ -441,6 +438,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       _modelName = null;
       _replyKeyMap.clear();
     });
+    _lastProcessedText = '';
     _loadHistory();
     _inputController.clear();
     _replyController.clear();
@@ -458,10 +456,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
     return entry.replyScores.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
   }
 
-  String _getDisplayText(PhraseEntry entry, String replyKey) {
-    // Prefer English for display (we can later localize the chip text).
-    return entry.replyTranslations[replyKey]?['english'] ??
+  String _getDisplayText(PhraseEntry entry, String replyKey, String incomingText) {
+    final hasArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(incomingText);
+    final langKey = hasArabic ? 'egyptian' : 'english';
+    return entry.replyTranslations[replyKey]?[langKey] ??
         entry.replyTranslations[replyKey]?['egyptian'] ??
+        entry.replyTranslations[replyKey]?['english'] ??
         entry.replyTranslations[replyKey]?['msa'] ??
         replyKey;
   }
@@ -478,7 +478,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       ttsGender: _profile.preferences['tts_gender'] ?? 'female',
     );
 
-    final displayText = _getDisplayText(entry, topKey);
+    final displayText = _getDisplayText(entry, topKey, _heardText);
 
     await widget.storage.logEntry(ConversationEntry(
       otherPersonText: '',
@@ -595,9 +595,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
       onResult: (text, isFinal) {
         final trimmed = text.trim();
         if (trimmed.isNotEmpty && mounted && _inputController.text != trimmed) {
-           setState(() => _inputController.text = trimmed);
+          // Suppress _onInputChanged so we don't double-call _process.
+          _suppressInputListener = true;
+          setState(() => _inputController.text = trimmed);
+          _suppressInputListener = false;
         }
-        
+
+        // Process only if we have new text that wasn't already processed.
+        if (trimmed.isNotEmpty && trimmed != _lastProcessedText && mounted) {
+          _lastProcessedText = trimmed;
+          _process(trimmed, isRealTime: !isFinal);
+        }
+
         if (isFinal) {
           if (mounted) {
             setState(() => _listening = false);
@@ -847,7 +856,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           final entry = pinnedEntries[index];
                           final topKey = _getTopReplyKey(entry);
                           if (topKey.isEmpty) return const SizedBox.shrink();
-                          final display = _getDisplayText(entry, topKey);
+                          final display = _getDisplayText(entry, topKey, _heardText);
                           return ActionChip(
                             label: Text(display, style: const TextStyle(fontSize: 14)),
                             onPressed: () => _sendPinnedReply(entry),

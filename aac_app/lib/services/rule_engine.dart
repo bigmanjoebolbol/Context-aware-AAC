@@ -33,6 +33,7 @@ class RuleEngine {
     required List<PhraseEntry> phrasebook,
   }) {
     final normalized = _normalize(text);
+    final detectedLang = _detectLanguage(text, profile.languagePreference);
 
     // 1. Either/or & multi-choice processing takes priority.
     final options = _extractOptions(normalized);
@@ -62,7 +63,7 @@ class RuleEngine {
       return RuleEngineResult(
         handled: true,
         type: QuestionType.knownPhrase,
-        suggestions: _rankedSuggestionsFromPhrase(phraseMatch, profile),
+        suggestions: _rankedSuggestionsFromPhrase(phraseMatch, profile, detectedLang),
         matchedPhrase: phraseMatch,
       );
     }
@@ -88,16 +89,56 @@ class RuleEngine {
     return null;
   }
 
-  List<Suggestion> _rankedSuggestionsFromPhrase(PhraseEntry entry, UserProfile profile) {
+  /// Detects the language of the incoming text based on its script.
+  /// Returns 'egyptian', 'msa', or 'english'. Falls back to the user's
+  /// language preference if the text is ambiguous (e.g. very short).
+  String _detectLanguage(String text, String userLangPref) {
+    // Check for Arabic script characters
+    final hasArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+    if (hasArabic) {
+      // Treat all Arabic input as Egyptian since that's the colloquial default
+      return 'egyptian';
+    }
+    // Latin script — it's English
+    return 'english';
+  }
+
+  /// Maps a detected language string to the key used in replyTranslations.
+  String _translationKey(String detectedLang) {
+    switch (detectedLang) {
+      case 'egyptian':
+        return 'egyptian';
+      case 'msa':
+        return 'msa';
+      default:
+        return 'english';
+    }
+  }
+
+  List<Suggestion> _rankedSuggestionsFromPhrase(
+      PhraseEntry entry, UserProfile profile, String detectedLang) {
     final sortedKeys = entry.replyScores.keys.toList()
       ..sort((a, b) => entry.replyScores[b]!.compareTo(entry.replyScores[a]!));
+
+    final primaryKey = _translationKey(detectedLang);
+    // Fallback chain: primary detected lang → opposite language → raw key
+    String _resolveText(String replyKey) {
+      final translations = entry.replyTranslations[replyKey];
+      if (translations == null) return replyKey;
+      return translations[primaryKey] ??
+          translations['egyptian'] ??
+          translations['english'] ??
+          translations['msa'] ??
+          replyKey;
+    }
 
     final suggestions = sortedKeys
         .take(4)
         .map((k) => Suggestion(
-              text: k,
+              text: _resolveText(k),
               source: SuggestionSource.phrasebook,
               score: entry.replyScores[k]!,
+              replyKey: k,
             ))
         .toList();
 

@@ -151,6 +151,20 @@ class PhraseEntryAdapter extends TypeAdapter<PhraseEntry> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numFields; i++) reader.readByte(): reader.read(),
     };
+    // Hive returns nested maps as Map<dynamic, dynamic>.
+    // We must rebuild the structure manually to get Map<String, Map<String, String>>.
+    Map<String, Map<String, String>> _parseTranslations(dynamic raw) {
+      if (raw == null) return {};
+      final outer = raw as Map;
+      return {
+        for (final outerEntry in outer.entries)
+          outerEntry.key.toString(): {
+            for (final innerEntry in (outerEntry.value as Map).entries)
+              innerEntry.key.toString(): innerEntry.value.toString(),
+          },
+      };
+    }
+
     return PhraseEntry(
       triggerKey: fields[0] as String? ?? '',
       variants: (fields[1] as List?)?.cast<String>() ?? [],
@@ -158,8 +172,7 @@ class PhraseEntryAdapter extends TypeAdapter<PhraseEntry> {
       injectPreference: fields[3] as bool? ?? false,
       preferenceKey: fields[4] as String?,
       pinned: fields[5] as bool? ?? false,
-      replyTranslations:
-          (fields[6] as Map?)?.cast<String, Map<String, String>>() ?? {},
+      replyTranslations: _parseTranslations(fields[6]),
     );
   }
 

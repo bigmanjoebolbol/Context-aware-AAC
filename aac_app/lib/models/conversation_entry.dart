@@ -10,10 +10,15 @@ class Suggestion {
   final SuggestionSource source;
   double score;
 
+  /// For phrasebook suggestions, the stable reply key (e.g. 'reply_greeting_1')
+  /// used to look up translations in [PhraseEntry.replyTranslations].
+  final String? replyKey;
+
   Suggestion({
     required this.text,
     required this.source,
     this.score = 0,
+    this.replyKey,
   });
 }
 
